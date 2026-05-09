@@ -1,84 +1,48 @@
-import { normalizePaymentMethods } from "@/core/payments/normalizePaymentMethods";
 import { buildWhatsappUrl } from "@/core/messaging/buildWhatsappUrl";
-import { formatIlsAmount, messagingTemplates } from "@/core/messaging/templates";
+import { buildPaymentPageUrl, createSignedPaymentPageToken } from "@/core/messaging/paymentPageToken";
+import { formatIlsAmountShort, messagingTemplates } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput, BuildCollectionMessageOutput } from "@/core/messaging/types";
+import { normalizePaymentMethods } from "@/core/payments/normalizePaymentMethods";
 
-function buildItemsSection(input: BuildCollectionMessageInput): { text: string; includesItems: boolean } {
-  const items = input.debt.items ?? [];
-
-  if (items.length === 0) {
-    return {
-      text: `${messagingTemplates.itemsTitle}\n- ${messagingTemplates.missingItemsFallback}`,
-      includesItems: false,
-    };
-  }
-
-  const lines = items.map((item) => {
-    const quantity = item.quantity ?? 1;
-    const lineTotal = item.lineTotal ?? null;
-    const formattedLineTotal = formatIlsAmount(lineTotal);
-    const suffix = formattedLineTotal ? ` (${formattedLineTotal})` : "";
-    return `- ${item.productName} x${quantity}${suffix}`;
-  });
-
-  return {
-    text: `${messagingTemplates.itemsTitle}\n${lines.join("\n")}`,
-    includesItems: true,
-  };
-}
-
-function buildPaymentSection(input: BuildCollectionMessageInput): { text: string; methodsCount: number } {
-  const methods = normalizePaymentMethods(input.paymentMethods);
-  if (methods.length === 0) {
-    return {
-      text: `${messagingTemplates.paymentTitle}\n- אין כרגע אמצעי תשלום פעיל. נא ליצור קשר עם העסק.`,
-      methodsCount: 0,
-    };
-  }
-
-  const lines = methods.map((method) => {
-    if (method.value) {
-      return `- ${method.label}: ${method.value}`;
-    }
-
-    return `- ${method.label}`;
-  });
-
-  return {
-    text: `${messagingTemplates.paymentTitle}\n${lines.join("\n")}`,
-    methodsCount: methods.length,
-  };
-}
-
+/**
+ * Short SMS: triggers open of payment page only (no item list or payment rails in text).
+ */
 export function buildCollectionMessage(input: BuildCollectionMessageInput): BuildCollectionMessageOutput {
-  const customerName = input.customer.fullName?.trim() || "לקוח/ה";
-  const businessName = input.business.businessName;
-  const amount = formatIlsAmount(input.debt.totalAmount);
+  const businessName = input.business.businessName.trim();
+  const headerLine = `${businessName} 💸`;
 
-  const itemsSection = buildItemsSection(input);
-  const paymentSection = buildPaymentSection(input);
-  const normalizedPaymentMethods = normalizePaymentMethods(input.paymentMethods);
+  const amountShort = formatIlsAmountShort(input.debt.totalAmount);
+  const amountLine = amountShort
+    ? `${messagingTemplates.openPaymentLine} ${amountShort}`
+    : messagingTemplates.missingAmountPhrase;
 
-  const amountLine = amount ? `סה"כ לתשלום: ${amount}` : messagingTemplates.missingAmountFallback;
+  const paymentPageToken = createSignedPaymentPageToken({
+    debtId: input.debt.id,
+    customerId: input.customer.id,
+  });
+  const paymentPageUrl = buildPaymentPageUrl(paymentPageToken);
 
   const messageText = [
-    `${messagingTemplates.greeting} ${customerName},`,
+    headerLine,
     "",
-    `${messagingTemplates.intro} מ-${businessName}`,
     amountLine,
     "",
-    itemsSection.text,
-    "",
-    paymentSection.text,
+    messagingTemplates.payOrUpdateLine,
+    paymentPageUrl,
   ].join("\n");
+
+  const normalizedPaymentMethods = normalizePaymentMethods(input.paymentMethods);
+  const items = input.debt.items ?? [];
 
   return {
     messageText,
     whatsappUrl: buildWhatsappUrl(input.customer.phone, messageText),
     metadata: {
       includedPaymentMethods: normalizedPaymentMethods,
-      includesItems: itemsSection.includesItems,
-      includesAmount: Boolean(amount),
+      includesItems: items.length > 0,
+      includesAmount: Boolean(amountShort),
+      paymentPageUrl,
+      paymentPageToken,
     },
   };
 }

@@ -1,11 +1,19 @@
 export const messagingTemplates = {
-  greeting: "שלום",
-  intro: "תזכורת תשלום",
-  itemsTitle: "פירוט:",
-  paymentTitle: "אפשרויות תשלום פעילות:",
-  missingItemsFallback: "לא צורף פירוט פריטים.",
-  missingAmountFallback: "סכום לתשלום יעודכן מול העסק.",
+  /** Short SMS trigger copy (payment details live on /pay/[token]) */
+  openPaymentLine: "יש לך תשלום פתוח על סך",
+  payOrUpdateLine: "לתשלום / עדכון:",
+  missingAmountPhrase: "יש לך תשלום פתוח — הסכום יוצג בעמוד התשלום.",
 } as const;
+
+/** Plain ₪ amount for SMS line: ₪78 or ₪78.50 */
+export function formatIlsAmountShort(amount: number | null | undefined): string | null {
+  if (typeof amount !== "number" || Number.isNaN(amount)) {
+    return null;
+  }
+
+  const formatted = amount % 1 === 0 ? String(Math.trunc(amount)) : amount.toFixed(2);
+  return `₪${formatted}`;
+}
 
 export function formatIlsAmount(amount: number | null | undefined): string | null {
   if (typeof amount !== "number" || Number.isNaN(amount)) {
