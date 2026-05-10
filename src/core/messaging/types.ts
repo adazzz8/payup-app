@@ -22,6 +22,7 @@ export type BuildCollectionMessageOutput = {
     includedPaymentMethods: NormalizedPaymentMethod[];
     includesItems: boolean;
     includesAmount: boolean;
+    includesPurchaseDate: boolean;
     paymentPageUrl: string;
     paymentPageToken: string;
   };
