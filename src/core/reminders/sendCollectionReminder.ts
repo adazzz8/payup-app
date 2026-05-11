@@ -51,6 +51,7 @@ async function loadReminderPayload(input: SendCollectionReminderInput): Promise<
       { type: "bit", isActive: true, value: "0500000000" },
       { type: "paybox", isActive: true, value: "https://payboxapp.page.link/example" },
     ],
+    paymentLink: process.env.PAYUP_FAKE_PAYMENT_LINK?.trim() || undefined,
   };
 }
 

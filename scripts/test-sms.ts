@@ -8,6 +8,14 @@ async function main() {
     throw new Error("Missing PAYUP_TEST_SMS_PHONE in environment.");
   }
 
+  const testPaymentLink = process.env.PAYUP_TEST_PAYMENT_LINK?.trim();
+  if (!testPaymentLink) {
+    throw new Error("Missing PAYUP_TEST_PAYMENT_LINK (full https URL from Base44 payment flow).");
+  }
+  if (!/^https:\/\//i.test(testPaymentLink)) {
+    throw new Error("PAYUP_TEST_PAYMENT_LINK must start with https:// (matches production API validation).");
+  }
+
   const payload: BuildCollectionMessageInput = {
     business: {
       id: "biz_test_1",
@@ -55,6 +63,8 @@ async function main() {
         value: null,
       },
     ],
+    paymentLink: testPaymentLink,
+    purchaseDateDisplay: "שלישי ה-7.5",
   };
 
   const result = await sendCollectionSms(payload);

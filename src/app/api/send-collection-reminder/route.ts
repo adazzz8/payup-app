@@ -7,6 +7,11 @@ import type { PaymentMethodInput } from "@/core/payments/types";
 /** Temporary debugging — remove when Base44 ↔ Core integration is stable */
 const LOG_PREFIX = "[PayUp API][send-collection-reminder]";
 
+/**
+ * Production contract: Base44 MUST send `payload.paymentLink` — full https URL from the pay flow
+ * (not optional). Validation rejects missing or non-https links so SMS never ships without a real link.
+ */
+
 const CORS_ALLOWED_ORIGIN = "https://getpayup.io";
 
 function getCorsHeaders(): Record<string, string> {
@@ -89,7 +94,25 @@ function validatePayload(payload: unknown, debtId: string): payload is BuildColl
     return false;
   }
 
-  return validatePaymentMethods(paymentMethods);
+  if (!validatePaymentMethods(paymentMethods)) {
+    return false;
+  }
+
+  const paymentLink = p.paymentLink;
+  if (!isNonEmptyString(paymentLink)) {
+    return false;
+  }
+  const trimmedLink = paymentLink.trim();
+  if (!/^https:\/\//i.test(trimmedLink)) {
+    return false;
+  }
+
+  const purchaseDateDisplay = p.purchaseDateDisplay;
+  if (purchaseDateDisplay !== undefined && purchaseDateDisplay !== null && typeof purchaseDateDisplay !== "string") {
+    return false;
+  }
+
+  return true;
 }
 
 export async function POST(request: Request) {
@@ -138,7 +161,7 @@ export async function POST(request: Request) {
             {
               field: "payload",
               message:
-                "When provided, payload must include business (id, businessName), customer (id, phone), debt (id matching debtId), and paymentMethods array with valid types.",
+                "Base44 production payloads MUST include paymentLink (full https URL from your pay flow). Also: business, customer, debt (id matching debtId), paymentMethods.",
             },
           ],
         },

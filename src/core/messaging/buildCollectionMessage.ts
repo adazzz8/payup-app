@@ -1,38 +1,36 @@
 import { buildWhatsappUrl } from "@/core/messaging/buildWhatsappUrl";
-import { buildPaymentPageUrl, createSignedPaymentPageToken } from "@/core/messaging/paymentPageToken";
+import { resolvePaymentLinkFromPayload } from "@/core/messaging/resolvePaymentLink";
 import {
-  formatIlsAmountShort,
-  formatPurchaseDateLineHebrew,
+  formatIlsAmountDigitsForTemplate,
+  formatPurchaseDateSuffixHebrew,
   messagingTemplates,
 } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput, BuildCollectionMessageOutput } from "@/core/messaging/types";
 import { normalizePaymentMethods } from "@/core/payments/normalizePaymentMethods";
 
 /**
- * Short SMS: triggers open of payment page only (no item list or payment rails in text).
+ * Single production SMS template. Payment URL is always Base44 `paymentLink`.
  */
 export function buildCollectionMessage(input: BuildCollectionMessageInput): BuildCollectionMessageOutput {
   const businessName = input.business.businessName.trim();
-  const headerLine = `${businessName} 💸`;
+  const customerName = input.customer.fullName?.trim() || "שם";
+  const paymentUrl = resolvePaymentLinkFromPayload(input);
 
-  const amountShort = formatIlsAmountShort(input.debt.totalAmount);
-  const amountLine = amountShort
-    ? `${messagingTemplates.openPaymentLine} ${amountShort}`
+  const amountDigits = formatIlsAmountDigitsForTemplate(input.debt.totalAmount);
+  const amountLine = amountDigits
+    ? `יש לך תשלום פתוח על סך ₪${amountDigits}`
     : messagingTemplates.missingAmountPhrase;
 
-  const purchaseDateLine = formatPurchaseDateLineHebrew(input.debt.purchaseDate);
+  const purchaseSuffix =
+    input.purchaseDateDisplay?.trim() || formatPurchaseDateSuffixHebrew(input.debt.purchaseDate) || null;
 
-  const paymentPageToken = createSignedPaymentPageToken({
-    debtId: input.debt.id,
-    customerId: input.customer.id,
-  });
-  const paymentPageUrl = buildPaymentPageUrl(paymentPageToken);
+  const bodyLines: string[] = [`${businessName} 💸`, "", `היי ${customerName},`, amountLine];
+  if (purchaseSuffix) {
+    bodyLines.push(`מיום ${purchaseSuffix}`);
+  }
+  bodyLines.push("", messagingTemplates.payOrUpdateLine, paymentUrl);
 
-  const bodyAfterAmount = purchaseDateLine ? [amountLine, purchaseDateLine] : [amountLine];
-
-  const messageText = [headerLine, "", ...bodyAfterAmount, "", messagingTemplates.payOrUpdateLine, paymentPageUrl].join(
-    "\n",
-  );
+  const messageText = bodyLines.join("\n");
 
   const normalizedPaymentMethods = normalizePaymentMethods(input.paymentMethods);
   const items = input.debt.items ?? [];
@@ -43,10 +41,9 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
     metadata: {
       includedPaymentMethods: normalizedPaymentMethods,
       includesItems: items.length > 0,
-      includesAmount: Boolean(amountShort),
-      includesPurchaseDate: Boolean(purchaseDateLine),
-      paymentPageUrl,
-      paymentPageToken,
+      includesAmount: Boolean(amountDigits),
+      includesPurchaseDate: Boolean(purchaseSuffix),
+      resolvedPaymentLink: paymentUrl,
     },
   };
 }

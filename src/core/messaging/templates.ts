@@ -1,18 +1,21 @@
 export const messagingTemplates = {
-  /** Short SMS trigger copy (payment details live on /pay/[token]) */
-  openPaymentLine: "יש לך תשלום פתוח על סך",
   payOrUpdateLine: "לתשלום / עדכון:",
   missingAmountPhrase: "יש לך תשלום פתוח — הסכום יוצג בעמוד התשלום.",
 } as const;
 
-/** Plain ₪ amount for SMS line: ₪78 or ₪78.50 */
-export function formatIlsAmountShort(amount: number | null | undefined): string | null {
+/** Digits only for template line: … על סך ₪{{amount}} */
+export function formatIlsAmountDigitsForTemplate(amount: number | null | undefined): string | null {
   if (typeof amount !== "number" || Number.isNaN(amount)) {
     return null;
   }
 
-  const formatted = amount % 1 === 0 ? String(Math.trunc(amount)) : amount.toFixed(2);
-  return `₪${formatted}`;
+  return amount % 1 === 0 ? String(Math.trunc(amount)) : amount.toFixed(2);
+}
+
+/** Plain ₪ amount for SMS line: ₪78 or ₪78.50 */
+export function formatIlsAmountShort(amount: number | null | undefined): string | null {
+  const digits = formatIlsAmountDigitsForTemplate(amount);
+  return digits ? `₪${digits}` : null;
 }
 
 export function formatIlsAmount(amount: number | null | undefined): string | null {
@@ -82,4 +85,13 @@ export function formatPurchaseDateLineHebrew(purchaseDate: string | null | undef
   }
 
   return `מיום ${weekdayHe} ה-${day}.${month}`;
+}
+
+/** For template `מיום {{purchaseDate}}` — value without "מיום " prefix, e.g. שלישי ה-7.5 */
+export function formatPurchaseDateSuffixHebrew(purchaseDate: string | null | undefined): string | null {
+  const full = formatPurchaseDateLineHebrew(purchaseDate);
+  if (!full) {
+    return null;
+  }
+  return full.replace(/^מיום\s+/, "").trim() || null;
 }

@@ -13,6 +13,10 @@ export type BuildCollectionMessageInput = {
   customer: CustomerContext;
   debt: DebtContext;
   paymentMethods: PaymentMethodInput[];
+  /** Full pay URL from Base44 (required for SMS). */
+  paymentLink?: string | null;
+  /** Optional pre-formatted date fragment, e.g. "שלישי ה-7.5" (without leading "מיום "). */
+  purchaseDateDisplay?: string | null;
 };
 
 export type BuildCollectionMessageOutput = {
@@ -23,7 +27,6 @@ export type BuildCollectionMessageOutput = {
     includesItems: boolean;
     includesAmount: boolean;
     includesPurchaseDate: boolean;
-    paymentPageUrl: string;
-    paymentPageToken: string;
+    resolvedPaymentLink: string;
   };
 };
