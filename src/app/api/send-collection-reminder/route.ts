@@ -7,6 +7,56 @@ import type { PaymentMethodInput } from "@/core/payments/types";
 /** Temporary debugging — remove when Base44 ↔ Core integration is stable */
 const LOG_PREFIX = "[PayUp API][send-collection-reminder]";
 
+/** Inspect-only: log which purchase-date fields exist on the raw incoming payload (no behavior change). */
+function logIncomingPurchaseDateFields(payload: unknown): void {
+  if (payload === undefined) {
+    console.info(`${LOG_PREFIX} purchase-date fields (incoming)`, {
+      note: "body.payload is undefined - no nested purchase-date paths to inspect",
+    });
+    return;
+  }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    console.info(`${LOG_PREFIX} purchase-date fields (incoming)`, {
+      note: "body.payload is not a plain object",
+      payloadType: payload === null ? "null" : Array.isArray(payload) ? "array" : typeof payload,
+    });
+    return;
+  }
+  const p = payload as Record<string, unknown>;
+  const debt = p.debt;
+  const debtObj =
+    debt && typeof debt === "object" && !Array.isArray(debt)
+      ? (debt as Record<string, unknown>)
+      : null;
+
+  const inspectPath = (exists: boolean, value: unknown) => {
+    const type = exists ? typeof value : "undefined";
+    let parsesAsJsDate: boolean | null = null;
+    if (exists && typeof value === "string") {
+      const t = new Date(value.trim()).getTime();
+      parsesAsJsDate = !Number.isNaN(t);
+    }
+    return {
+      exists,
+      value: exists ? value : undefined,
+      type,
+      parsesAsJsDate,
+    };
+  };
+
+  console.info(`${LOG_PREFIX} purchase-date fields (incoming)`, {
+    "payload.purchaseDateDisplay": inspectPath("purchaseDateDisplay" in p, p.purchaseDateDisplay),
+    "payload.debt.purchaseDate": inspectPath(
+      debtObj !== null && "purchaseDate" in debtObj,
+      debtObj?.purchaseDate,
+    ),
+    "payload.debt.created_date": inspectPath(
+      debtObj !== null && "created_date" in debtObj,
+      debtObj?.created_date,
+    ),
+  });
+}
+
 /**
  * Production contract: Base44 MUST send `payload.paymentLink` — full https URL from the pay flow
  * (not optional). Validation rejects missing or non-https links so SMS never ships without a real link.
@@ -119,6 +169,7 @@ export async function POST(request: Request) {
   let body: ApiBody;
   try {
     body = (await request.json()) as ApiBody;
+    logIncomingPurchaseDateFields(body.payload);
     console.info(`${LOG_PREFIX} incoming body`, JSON.stringify(body));
   } catch (parseError) {
     console.warn(`${LOG_PREFIX} validation failed: invalid JSON`, parseError);
