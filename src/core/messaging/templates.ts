@@ -1,7 +1,37 @@
 export const messagingTemplates = {
   payOrUpdateLine: "לתשלום / עדכון:",
-  missingAmountPhrase: "יש לך תשלום פתוח — הסכום יוצג בעמוד התשלום.",
+  missingAmountPhrase: "יש לך תשלום פתוח - הסכום יוצג בעמוד התשלום.",
 } as const;
+
+/**
+ * Amount field priority for SMS (Base44 may send snake_case or camelCase).
+ * 1. outstanding_amount 2. total_amount 3. outstandingAmount 4. totalAmount
+ */
+export function resolveDebtAmountForSms(debt: {
+  outstanding_amount?: unknown;
+  total_amount?: unknown;
+  outstandingAmount?: unknown;
+  totalAmount?: unknown;
+}): number | null {
+  const candidates = [debt.outstanding_amount, debt.total_amount, debt.outstandingAmount, debt.totalAmount];
+
+  for (const v of candidates) {
+    if (v === null || v === undefined) {
+      continue;
+    }
+    if (typeof v === "number" && !Number.isNaN(v)) {
+      return v;
+    }
+    if (typeof v === "string" && v.trim() !== "") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) {
+        return n;
+      }
+    }
+  }
+
+  return null;
+}
 
 /** Digits only for template line: … על סך ₪{{amount}} */
 export function formatIlsAmountDigitsForTemplate(amount: number | null | undefined): string | null {

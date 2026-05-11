@@ -4,19 +4,21 @@ import {
   formatIlsAmountDigitsForTemplate,
   formatPurchaseDateSuffixHebrew,
   messagingTemplates,
+  resolveDebtAmountForSms,
 } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput, BuildCollectionMessageOutput } from "@/core/messaging/types";
 import { normalizePaymentMethods } from "@/core/payments/normalizePaymentMethods";
 
 /**
- * Single production SMS template. Payment URL is always Base44 `paymentLink`.
+ * Final SMS only — Twilio/provider unchanged elsewhere.
  */
 export function buildCollectionMessage(input: BuildCollectionMessageInput): BuildCollectionMessageOutput {
   const businessName = input.business.businessName.trim();
   const customerName = input.customer.fullName?.trim() || "שם";
   const paymentUrl = resolvePaymentLinkFromPayload(input);
 
-  const amountDigits = formatIlsAmountDigitsForTemplate(input.debt.totalAmount);
+  const resolvedAmount = resolveDebtAmountForSms(input.debt);
+  const amountDigits = formatIlsAmountDigitsForTemplate(resolvedAmount);
   const amountLine = amountDigits
     ? `יש לך תשלום פתוח על סך ₪${amountDigits}`
     : messagingTemplates.missingAmountPhrase;
@@ -24,13 +26,15 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
   const purchaseSuffix =
     input.purchaseDateDisplay?.trim() || formatPurchaseDateSuffixHebrew(input.debt.purchaseDate) || null;
 
-  const bodyLines: string[] = [`${businessName} 💸`, "", `היי ${customerName},`, amountLine];
-  if (purchaseSuffix) {
-    bodyLines.push(`מיום ${purchaseSuffix}`);
-  }
-  bodyLines.push("", messagingTemplates.payOrUpdateLine, paymentUrl);
+  const lines: string[] = [`${businessName} 💸`, "", `היי ${customerName},`, "", amountLine];
 
-  const messageText = bodyLines.join("\n");
+  if (purchaseSuffix) {
+    lines.push("", `מיום ${purchaseSuffix}`);
+  }
+
+  lines.push("", messagingTemplates.payOrUpdateLine, "", paymentUrl);
+
+  const messageText = lines.join("\n");
 
   const normalizedPaymentMethods = normalizePaymentMethods(input.paymentMethods);
   const items = input.debt.items ?? [];

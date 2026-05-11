@@ -23,8 +23,14 @@ async function loadReminderPayload(input: SendCollectionReminderInput): Promise<
     return input.payload;
   }
 
-  // Temporary fake DB access path for integration wiring.
-  // Replace with real repository query by debtId once DB layer is connected.
+  // Temporary fake DB path — still requires full paymentLink (same contract as Base44).
+  const fakeLink = process.env.PAYUP_FAKE_PAYMENT_LINK?.trim();
+  if (!fakeLink || !/^https:\/\//i.test(fakeLink)) {
+    throw new Error(
+      "Set PAYUP_FAKE_PAYMENT_LINK (full https URL) for debtId-only reminder tests, or pass payload with paymentLink.",
+    );
+  }
+
   return {
     business: {
       id: "business_temp",
@@ -51,7 +57,7 @@ async function loadReminderPayload(input: SendCollectionReminderInput): Promise<
       { type: "bit", isActive: true, value: "0500000000" },
       { type: "paybox", isActive: true, value: "https://payboxapp.page.link/example" },
     ],
-    paymentLink: process.env.PAYUP_FAKE_PAYMENT_LINK?.trim() || undefined,
+    paymentLink: fakeLink,
   };
 }
 

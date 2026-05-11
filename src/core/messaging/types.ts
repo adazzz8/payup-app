@@ -13,8 +13,11 @@ export type BuildCollectionMessageInput = {
   customer: CustomerContext;
   debt: DebtContext;
   paymentMethods: PaymentMethodInput[];
-  /** Full pay URL from Base44 (required for SMS). */
-  paymentLink?: string | null;
+  /**
+   * Full https payment URL from Base44 — same URL the customer opens (unique per debt/customer).
+   * Example: https://getpayup.io/pay/abc123 — never token-only; Core does not build links.
+   */
+  paymentLink: string;
   /** Optional pre-formatted date fragment, e.g. "שלישי ה-7.5" (without leading "מיום "). */
   purchaseDateDisplay?: string | null;
 };
