@@ -1,0 +1,26 @@
+{
+  "debtId": "6a0053699842b34eefbc449b",
+  "payload": {
+    "business": {
+      "id": "biz_…",
+      "businessName": "נאבי נאב"
+    },
+    "customer": {
+      "id": "cust_…",
+      "fullName": "יוסי",
+      "phone": "0535651221"
+    },
+    "debt": {
+      "id": "6a0053699842b34eefbc449b",
+      "outstanding_amount": 128,
+      "currency": "ILS",
+      "purchaseDate": "2026-05-07",
+      "items": []
+    },
+    "paymentMethods": [
+      { "type": "bit", "isActive": true, "value": "050…" },
+      { "type": "paybox", "isActive": false, "value": null }
+    ],
+    "paymentLink": "https://getpayup.io/pay/abc123"
+  }
+}
