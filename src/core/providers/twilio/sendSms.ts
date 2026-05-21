@@ -30,7 +30,8 @@ export async function sendSms(input: TwilioSendSmsInput): Promise<TwilioSendSmsR
   let attempts = 0;
   let lastError: string | null = null;
 
-  while (attempts < 3) {
+  // DEBUG: retries disabled — single attempt only (re-enable `while (attempts < 3)` after hang diagnosis)
+  while (attempts < 1) {
     attempts += 1;
 
     try {
