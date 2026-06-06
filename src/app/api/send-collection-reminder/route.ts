@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { requireAuth } from "@/core/auth/requireAuth";
+import { emptyCorsResponse, jsonWithCors } from "@/core/http/cors";
 import { sendCollectionReminder } from "@/core/reminders/sendCollectionReminder";
 import type { SendCollectionReminderInput } from "@/core/reminders/sendCollectionReminder";
 import type { BuildCollectionMessageInput } from "@/core/messaging/types";
@@ -62,30 +63,9 @@ function logIncomingPurchaseDateFields(payload: unknown): void {
  * (not optional). Validation rejects missing or non-https links so SMS never ships without a real link.
  */
 
-const CORS_ALLOWED_ORIGIN = "https://getpayup.io";
-
-function getCorsHeaders(): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": CORS_ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With",
-    Vary: "Origin",
-  };
-}
-
-function jsonWithCors(body: unknown, status: number) {
-  return NextResponse.json(body, { status, headers: getCorsHeaders() });
-}
-
-/** Preflight for browser fetch from Base44 (getpayup.io) */
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      ...getCorsHeaders(),
-      "Access-Control-Max-Age": "86400",
-    },
-  });
+/** Preflight for browser fetch from Base44 */
+export async function OPTIONS(request: Request) {
+  return emptyCorsResponse(request, 204, { "Access-Control-Max-Age": "86400" });
 }
 
 type ApiBody = {
@@ -166,6 +146,11 @@ function validatePayload(payload: unknown, debtId: string): payload is BuildColl
 }
 
 export async function POST(request: Request) {
+  const auth = requireAuth(request);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   let body: ApiBody;
   try {
     body = (await request.json()) as ApiBody;
@@ -173,7 +158,7 @@ export async function POST(request: Request) {
     console.info(`${LOG_PREFIX} incoming body`, JSON.stringify(body));
   } catch (parseError) {
     console.warn(`${LOG_PREFIX} validation failed: invalid JSON`, parseError);
-    return jsonWithCors({ error: "Invalid JSON body", code: "INVALID_JSON" }, 400);
+    return jsonWithCors(request, { error: "Invalid JSON body", code: "INVALID_JSON" }, 400);
   }
 
   const debtId = body.debtId;
@@ -184,6 +169,7 @@ export async function POST(request: Request) {
       typeOfDebtId: typeof body.debtId,
     });
     return jsonWithCors(
+      request,
       {
         error: "Validation failed",
         code: "DEBT_ID_REQUIRED",
@@ -205,6 +191,7 @@ export async function POST(request: Request) {
             : body.payload,
       });
       return jsonWithCors(
+        request,
         {
           error: "Validation failed",
           code: "INVALID_PAYLOAD",
@@ -223,7 +210,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    console.info(`${LOG_PREFIX} calling sendCollectionReminder`, JSON.stringify(input));
+    console.info(`${LOG_PREFIX} calling sendCollectionReminder`, {
+      therapistUserId: auth.context.userId,
+      input: JSON.stringify(input),
+    });
 
     const result = await sendCollectionReminder(input);
 
@@ -237,10 +227,10 @@ export async function POST(request: Request) {
     });
 
     if (result.success) {
-      return jsonWithCors(result, 200);
+      return jsonWithCors(request, result, 200);
     }
 
-    return jsonWithCors(result, 502);
+    return jsonWithCors(request, result, 502);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     console.error(`${LOG_PREFIX} thrown error:`, message);
@@ -249,6 +239,6 @@ export async function POST(request: Request) {
     } else {
       console.error(`${LOG_PREFIX} raw error:`, err);
     }
-    return jsonWithCors({ error: message, code: "INTERNAL_ERROR" }, 500);
+    return jsonWithCors(request, { error: message, code: "INTERNAL_ERROR" }, 500);
   }
 }
