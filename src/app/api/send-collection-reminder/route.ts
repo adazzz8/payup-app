@@ -3,6 +3,7 @@ import { emptyCorsResponse, jsonWithCors } from "@/core/http/cors";
 import { sendCollectionReminder } from "@/core/reminders/sendCollectionReminder";
 import type { SendCollectionReminderInput } from "@/core/reminders/sendCollectionReminder";
 import type { BuildCollectionMessageInput } from "@/core/messaging/types";
+import { normalizeCollectionReminderPayload } from "@/core/messaging/normalizeCollectionReminderPayload";
 import type { PaymentMethodInput } from "@/core/payments/types";
 
 /** Temporary debugging — remove when Base44 ↔ Core integration is stable */
@@ -182,7 +183,8 @@ export async function POST(request: Request) {
   let input: SendCollectionReminderInput = { debtId: debtId.trim() };
 
   if (body.payload !== undefined) {
-    if (!validatePayload(body.payload, input.debtId)) {
+    const normalizedPayload = normalizeCollectionReminderPayload(body.payload);
+    if (!validatePayload(normalizedPayload, input.debtId)) {
       console.warn(`${LOG_PREFIX} validation failed: INVALID_PAYLOAD`, {
         debtId: input.debtId,
         payloadPreview:
@@ -206,7 +208,7 @@ export async function POST(request: Request) {
         422,
       );
     }
-    input = { debtId: input.debtId, payload: body.payload };
+    input = { debtId: input.debtId, payload: normalizedPayload as BuildCollectionMessageInput };
   }
 
   try {
