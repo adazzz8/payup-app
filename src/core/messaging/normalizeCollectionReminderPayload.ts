@@ -83,7 +83,7 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
       if (!method) {
         return row;
       }
-      const isActive = pickBoolean(method, "isActive", "is_active");
+      const isActive = pickBoolean(method, "isActive", "is_active", "enabled");
       return {
         ...method,
         isActive: isActive ?? method.isActive,
