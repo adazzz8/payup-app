@@ -4,7 +4,7 @@ import {
   formatIlsAmountDigitsForTemplate,
   formatPurchaseDateSuffixHebrew,
   messagingTemplates,
-  resolveDebtAmountForSms,
+  resolveCollectionMessageAmount,
 } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput, BuildCollectionMessageOutput } from "@/core/messaging/types";
 import { normalizePaymentMethods } from "@/core/payments/normalizePaymentMethods";
@@ -17,19 +17,30 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
   const customerName = input.customer.fullName?.trim() || "שם";
   const paymentUrl = resolvePaymentLinkFromPayload(input);
 
-  const resolvedAmount = resolveDebtAmountForSms(input.debt);
+  const resolvedAmount = resolveCollectionMessageAmount(input);
   const amountDigits = formatIlsAmountDigitsForTemplate(resolvedAmount);
-  const amountLine = amountDigits
-    ? `יש לך תשלום פתוח על סך ₪${amountDigits}`
-    : messagingTemplates.missingAmountPhrase;
-
+  const aggregatedItems = input.aggregatedItems ?? [];
   const purchaseSuffix =
     input.purchaseDateDisplay?.trim() || formatPurchaseDateSuffixHebrew(input.debt.purchaseDate) || null;
 
-  const lines: string[] = [`${businessName} 💸`, "", `היי ${customerName},`, "", amountLine];
+  const lines: string[] = [`${businessName} 💸`, "", `היי ${customerName},`, ""];
 
-  if (purchaseSuffix) {
-    lines.push("", `מיום ${purchaseSuffix}`);
+  if (input.isAggregated === true) {
+    const chargeCount = aggregatedItems.length > 0 ? aggregatedItems.length : 1;
+    if (amountDigits) {
+      lines.push(`יש לך ${chargeCount} חיובים פתוחים`, `סה״כ לתשלום ₪${amountDigits}`);
+    } else {
+      lines.push(messagingTemplates.missingAmountPhrase);
+    }
+  } else {
+    const amountLine = amountDigits
+      ? `יש לך תשלום פתוח על סך ₪${amountDigits}`
+      : messagingTemplates.missingAmountPhrase;
+    lines.push(amountLine);
+
+    if (purchaseSuffix) {
+      lines.push("", `מיום ${purchaseSuffix}`);
+    }
   }
 
   lines.push("", messagingTemplates.payOrUpdateLine, "", paymentUrl);
@@ -46,7 +57,7 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
       includedPaymentMethods: normalizedPaymentMethods,
       includesItems: items.length > 0,
       includesAmount: Boolean(amountDigits),
-      includesPurchaseDate: Boolean(purchaseSuffix),
+      includesPurchaseDate: input.isAggregated !== true && Boolean(purchaseSuffix),
       resolvedPaymentLink: paymentUrl,
     },
   };

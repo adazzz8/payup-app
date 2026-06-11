@@ -29,6 +29,22 @@ function pickBoolean(obj: Record<string, unknown>, ...keys: string[]): boolean |
   return undefined;
 }
 
+function pickNumber(obj: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "number" && !Number.isNaN(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      const n = Number(value.trim());
+      if (!Number.isNaN(n)) {
+        return n;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function normalizeCollectionReminderPayload(raw: unknown): unknown {
   const payload = asRecord(raw);
   if (!payload) {
@@ -75,6 +91,31 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
   const purchaseDateDisplay = pickString(payload, "purchaseDateDisplay", "purchase_date_display");
   if (purchaseDateDisplay) {
     normalized.purchaseDateDisplay = purchaseDateDisplay;
+  }
+
+  const isAggregated = pickBoolean(payload, "isAggregated", "is_aggregated");
+  if (isAggregated !== undefined) {
+    normalized.isAggregated = isAggregated;
+  }
+
+  const totalAggregatedAmount = pickNumber(payload, "totalAggregatedAmount", "total_aggregated_amount");
+  if (totalAggregatedAmount !== undefined) {
+    normalized.totalAggregatedAmount = totalAggregatedAmount;
+  }
+
+  const aggregatedItemsRaw = payload.aggregatedItems ?? payload.aggregated_items;
+  if (Array.isArray(aggregatedItemsRaw)) {
+    normalized.aggregatedItems = aggregatedItemsRaw.map((row) => {
+      const item = asRecord(row);
+      if (!item) {
+        return row;
+      }
+      return {
+        ...item,
+        purchaseDate: item.purchaseDate ?? item.purchase_date,
+        purchaseDateDisplay: pickString(item, "purchaseDateDisplay", "purchase_date_display") ?? item.purchaseDateDisplay,
+      };
+    });
   }
 
   if (Array.isArray(paymentMethodsRaw)) {

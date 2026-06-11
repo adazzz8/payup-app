@@ -8,11 +8,27 @@ export type CustomerContext = {
   phone?: string | null;
 };
 
+/** Single row in an aggregated reminder (Base44 sends on payload root). */
+export type AggregatedItem = {
+  id?: string;
+  outstanding_amount?: number | string | null;
+  total_amount?: number | string | null;
+  outstandingAmount?: number | string | null;
+  totalAmount?: number | string | null;
+  purchaseDate?: string | null;
+  purchase_date?: string | null;
+  purchaseDateDisplay?: string | null;
+  purchase_date_display?: string | null;
+};
+
 export type BuildCollectionMessageInput = {
   business: BusinessContext;
   customer: CustomerContext;
   debt: DebtContext;
   paymentMethods: PaymentMethodInput[];
+  isAggregated?: boolean;
+  totalAggregatedAmount?: number | string | null;
+  aggregatedItems?: AggregatedItem[] | null;
   /**
    * Full https payment URL from Base44 — same URL the customer opens (unique per debt/customer).
    * Example: https://getpayup.io/pay/abc123 — never token-only; Core does not build links.

@@ -3,6 +3,22 @@ export const messagingTemplates = {
   missingAmountPhrase: "יש לך תשלום פתוח - הסכום יוצג בעמוד התשלום.",
 } as const;
 
+export function parseNumericAmount(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value.trim());
+    if (!Number.isNaN(n)) {
+      return n;
+    }
+  }
+  return null;
+}
+
 /**
  * Amount field priority for SMS (Base44 may send snake_case or camelCase).
  * 1. outstanding_amount 2. total_amount 3. outstandingAmount 4. totalAmount
@@ -16,21 +32,28 @@ export function resolveDebtAmountForSms(debt: {
   const candidates = [debt.outstanding_amount, debt.total_amount, debt.outstandingAmount, debt.totalAmount];
 
   for (const v of candidates) {
-    if (v === null || v === undefined) {
-      continue;
-    }
-    if (typeof v === "number" && !Number.isNaN(v)) {
-      return v;
-    }
-    if (typeof v === "string" && v.trim() !== "") {
-      const n = Number(v);
-      if (!Number.isNaN(n)) {
-        return n;
-      }
+    const n = parseNumericAmount(v);
+    if (n !== null) {
+      return n;
     }
   }
 
   return null;
+}
+
+/** Aggregated reminder uses totalAggregatedAmount; otherwise falls back to debt fields. */
+export function resolveCollectionMessageAmount(input: {
+  isAggregated?: boolean;
+  totalAggregatedAmount?: unknown;
+  debt: Parameters<typeof resolveDebtAmountForSms>[0];
+}): number | null {
+  if (input.isAggregated === true) {
+    const aggregated = parseNumericAmount(input.totalAggregatedAmount);
+    if (aggregated !== null) {
+      return aggregated;
+    }
+  }
+  return resolveDebtAmountForSms(input.debt);
 }
 
 /** Digits only for template line: … על סך ₪{{amount}} */
