@@ -23,7 +23,7 @@ export function resolveCorsOrigin(request: Request): string {
 export function getCorsHeaders(request: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": resolveCorsOrigin(request),
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With",
     Vary: "Origin",
   };

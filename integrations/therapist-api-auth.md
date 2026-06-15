@@ -42,6 +42,14 @@ Apply `supabase/migrations/0002_therapist_auth.sql` before using exchange in pro
 
 ## Not in Phase 1
 
-- Google OAuth / connect-code / callback
-- `/api/calendar/today`
 - Base44 frontend implementation
+
+## Google Calendar V1 (read-only)
+
+| Method | Path | Auth |
+|--------|------|------|
+| `GET` | `/api/google/connect` | PayUp access JWT (Bearer) |
+| `GET` | `/api/google/callback` | Public (signed OAuth `state`) |
+| `POST` | `/api/calendar/today` | PayUp access JWT (Bearer) |
+
+Apply `supabase/migrations/0003_google_calendar_v1.sql` before using Google Calendar in production.
