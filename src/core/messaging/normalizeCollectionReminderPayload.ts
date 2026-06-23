@@ -125,8 +125,10 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
         return row;
       }
       const isActive = pickBoolean(method, "isActive", "is_active", "enabled");
+      const type = method.type === "credit" ? "credit_link" : method.type;
       return {
         ...method,
+        type,
         isActive: isActive ?? method.isActive,
       };
     });
