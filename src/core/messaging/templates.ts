@@ -3,6 +3,41 @@ export const messagingTemplates = {
   missingAmountPhrase: "יש לך תשלום פתוח - הסכום יוצג בעמוד התשלום.",
 } as const;
 
+/** Initial payment request SMS — uses existing payload variables only. */
+export function buildInitialPaymentRequestMessage(input: {
+  customerName: string;
+  businessName: string;
+  openDebtsCount: number;
+  totalAmountDigits: string | null;
+  paymentLink: string;
+}): string {
+  const summaryLine = input.totalAmountDigits
+    ? input.openDebtsCount === 1
+      ? `רק רציתי להזכיר בעדינות שנותר חיוב פתוח אחד, בסכום של ₪${input.totalAmountDigits}.`
+      : `רק רציתי להזכיר בעדינות שנותרו ${input.openDebtsCount} חיובים פתוחים, בסכום כולל של ₪${input.totalAmountDigits}.`
+    : messagingTemplates.missingAmountPhrase;
+
+  return [
+    `שלום ${input.customerName} 😊`,
+    "",
+    `אני עוזרת בניהול התשלומים של ${input.businessName}.`,
+    "",
+    summaryLine,
+    "",
+    "בקישור הבא אפשר לבחור איך להמשיך:",
+    "",
+    "✅ להסדיר את התשלום עכשיו",
+    "",
+    "✅ לעדכן שהתשלום כבר בוצע",
+    "",
+    "✅ לעדכן שהתשלום יבוצע בהמשך",
+    "",
+    input.paymentLink,
+    "",
+    "תודה רבה 🙏",
+  ].join("\n");
+}
+
 export function parseNumericAmount(value: unknown): number | null {
   if (value === null || value === undefined) {
     return null;
