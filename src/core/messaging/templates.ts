@@ -13,18 +13,18 @@ export function buildInitialPaymentRequestMessage(input: {
 }): string {
   const summaryLine = input.totalAmountDigits
     ? input.openDebtsCount === 1
-      ? `רק רציתי להזכיר בעדינות שנותר חיוב פתוח אחד, בסכום של ₪${input.totalAmountDigits}.`
-      : `רק רציתי להזכיר בעדינות שנותרו ${input.openDebtsCount} חיובים פתוחים, בסכום כולל של ₪${input.totalAmountDigits}.`
+      ? `רק רציתי להזכיר שכרגע יש חיוב פתוח אחד, בסכום של ₪${input.totalAmountDigits}.`
+      : `רק רציתי להזכיר שכרגע יש ${input.openDebtsCount} חיובים פתוחים, בסכום כולל של ₪${input.totalAmountDigits}.`
     : messagingTemplates.missingAmountPhrase;
 
   return [
     `שלום ${input.customerName} 😊`,
     "",
-    `אני עוזרת בניהול התשלומים של ${input.businessName}.`,
+    `אני עוזרת לנהל את התשלומים של ${input.businessName}.`,
     "",
     summaryLine,
     "",
-    "בקישור הבא אפשר לבחור איך להמשיך:",
+    "אפשר לבחור איך להמשיך:",
     "",
     "✅ להסדיר את התשלום עכשיו",
     "",
