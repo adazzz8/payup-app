@@ -52,7 +52,11 @@ export async function sendSms(input: TwilioSendSmsInput): Promise<TwilioSendSmsR
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown Twilio error";
       lastError = message;
-      console.error("[PayUp Core][Twilio] sendSms failed", { attempts, message });
+      console.error("[PayUp Core][Twilio] sendSms failed", {
+        attempts,
+        success: false,
+        errorCode: message,
+      });
 
       if (!shouldRetry(message) || attempts >= 3) {
         break;
