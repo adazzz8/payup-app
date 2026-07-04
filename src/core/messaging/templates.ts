@@ -24,7 +24,7 @@ export function buildInitialPaymentRequestMessage(input: {
     "",
     summaryLine,
     "",
-    "אפשר לבחור איך להמשיך:",
+    "בלחיצה על הקישור למטה תוכלו לבחור איך להמשיך:",
     "",
     "✅ להסדיר את התשלום עכשיו",
     "",
