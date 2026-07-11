@@ -1,43 +1,3 @@
-export const messagingTemplates = {
-  payOrUpdateLine: "לתשלום / עדכון:",
-  missingAmountPhrase: "יש לך תשלום פתוח - הסכום יוצג בעמוד התשלום.",
-} as const;
-
-/** Initial payment request SMS — uses existing payload variables only. */
-export function buildInitialPaymentRequestMessage(input: {
-  customerName: string;
-  businessName: string;
-  openDebtsCount: number;
-  totalAmountDigits: string | null;
-  paymentLink: string;
-}): string {
-  const summaryLine = input.totalAmountDigits
-    ? input.openDebtsCount === 1
-      ? `רק רציתי להזכיר שכרגע יש חיוב פתוח אחד, בסכום של ₪${input.totalAmountDigits}.`
-      : `רק רציתי להזכיר שכרגע יש ${input.openDebtsCount} חיובים פתוחים, בסכום כולל של ₪${input.totalAmountDigits}.`
-    : messagingTemplates.missingAmountPhrase;
-
-  return [
-    `שלום ${input.customerName} 😊`,
-    "",
-    `אני עוזרת לנהל את התשלומים של ${input.businessName}.`,
-    "",
-    summaryLine,
-    "",
-    "בלחיצה על הקישור למטה תוכלו לבחור איך להמשיך:",
-    "",
-    "✅ להסדיר את התשלום עכשיו",
-    "",
-    "✅ לעדכן שהתשלום כבר בוצע",
-    "",
-    "✅ לעדכן שהתשלום יבוצע בהמשך",
-    "",
-    input.paymentLink,
-    "",
-    "תודה רבה 🙏",
-  ].join("\n");
-}
-
 export function parseNumericAmount(value: unknown): number | null {
   if (value === null || value === undefined) {
     return null;
@@ -98,24 +58,6 @@ export function formatIlsAmountDigitsForTemplate(amount: number | null | undefin
   }
 
   return amount % 1 === 0 ? String(Math.trunc(amount)) : amount.toFixed(2);
-}
-
-/** Plain ₪ amount for SMS line: ₪78 or ₪78.50 */
-export function formatIlsAmountShort(amount: number | null | undefined): string | null {
-  const digits = formatIlsAmountDigitsForTemplate(amount);
-  return digits ? `₪${digits}` : null;
-}
-
-export function formatIlsAmount(amount: number | null | undefined): string | null {
-  if (typeof amount !== "number" || Number.isNaN(amount)) {
-    return null;
-  }
-
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 const HEBREW_WEEKDAY_SHORT_EN: Record<string, number> = {

@@ -23,7 +23,7 @@ async function loadReminderPayload(input: SendCollectionReminderInput): Promise<
     return input.payload;
   }
 
-  // Temporary fake DB path — still requires full paymentLink (same contract as Base44).
+  // DebtId-only dev path — still requires full paymentLink (same contract as Base44).
   const fakeLink = process.env.PAYUP_FAKE_PAYMENT_LINK?.trim();
   if (!fakeLink || !/^https:\/\//i.test(fakeLink)) {
     throw new Error(
@@ -86,13 +86,6 @@ export async function sendCollectionReminder(
     createdAt: new Date().toISOString(),
   });
 
-  /**
-   * Future architecture hooks:
-   * - Retries: failed sends should enqueue a retry job with backoff.
-   * - Queue: reminder dispatch should move into worker/queue execution.
-   * - Scheduler: scheduled reminders should trigger this service asynchronously.
-   * - Webhooks: provider delivery callbacks should update final message status.
-   */
   return {
     success: smsResult.delivery.success,
     deliveryStatus: smsResult.delivery.status,

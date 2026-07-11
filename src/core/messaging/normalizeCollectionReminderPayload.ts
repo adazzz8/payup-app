@@ -93,6 +93,22 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
     normalized.purchaseDateDisplay = purchaseDateDisplay;
   }
 
+  const messageType = pickString(
+    payload,
+    "messageType",
+    "message_type",
+    "reminderReason",
+    "reminder_reason",
+  );
+  if (messageType) {
+    normalized.messageType = messageType;
+  }
+
+  const sessionCount = pickNumber(payload, "sessionCount", "session_count");
+  if (sessionCount !== undefined) {
+    normalized.sessionCount = sessionCount;
+  }
+
   const isAggregated = pickBoolean(payload, "isAggregated", "is_aggregated");
   if (isAggregated !== undefined) {
     normalized.isAggregated = isAggregated;

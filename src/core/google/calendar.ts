@@ -15,14 +15,54 @@ export type TodayCalendarEvent = {
   end: string;
 };
 
+export type CalendarEventDateTime = {
+  dateTime?: string;
+  date?: string;
+  timeZone?: string;
+};
+
+export type CalendarEventAttendee = {
+  id?: string;
+  email?: string;
+  displayName?: string;
+  optional?: boolean;
+  responseStatus?: string;
+  self?: boolean;
+  organizer?: boolean;
+};
+
+export type CalendarRangeEvent = {
+  id: string;
+  status: string;
+  updated: string;
+  etag: string;
+  summary: string;
+  description: string | null;
+  start: CalendarEventDateTime;
+  end: CalendarEventDateTime;
+  recurringEventId: string | null;
+  originalStartTime: CalendarEventDateTime | null;
+  attendees: CalendarEventAttendee[];
+  calendarId: string;
+};
+
 type GoogleCalendarEventItem = {
+  id?: string;
+  status?: string;
+  updated?: string;
+  etag?: string;
   summary?: string;
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
+  description?: string;
+  start?: CalendarEventDateTime;
+  end?: CalendarEventDateTime;
+  recurringEventId?: string;
+  originalStartTime?: CalendarEventDateTime;
+  attendees?: CalendarEventAttendee[];
 };
 
 type GoogleCalendarListResponse = {
   items?: GoogleCalendarEventItem[];
+  nextPageToken?: string;
   error?: { message?: string };
 };
 
@@ -168,6 +208,109 @@ export async function getTodayCalendarForTherapist(therapistAccountId: string): 
     if (isGoogleAuthRevokedError(message)) {
       await deleteGoogleCalendarConnection(therapistAccountId);
       return { connected: false, events: [] };
+    }
+    throw error;
+  }
+}
+
+const PRIMARY_CALENDAR_ID = "primary";
+
+function mapGoogleRangeEvent(item: GoogleCalendarEventItem, calendarId: string): CalendarRangeEvent | null {
+  if (!item.id) {
+    return null;
+  }
+
+  return {
+    id: item.id,
+    status: item.status ?? "confirmed",
+    updated: item.updated ?? "",
+    etag: item.etag ?? "",
+    summary: item.summary ?? "",
+    description: item.description ?? null,
+    start: item.start ?? {},
+    end: item.end ?? {},
+    recurringEventId: item.recurringEventId ?? null,
+    originalStartTime: item.originalStartTime ?? null,
+    attendees: item.attendees ?? [],
+    calendarId,
+  };
+}
+
+async function fetchCalendarEventsWithAccessToken(
+  accessToken: string,
+  startDate: string,
+  endDate: string,
+): Promise<CalendarRangeEvent[]> {
+  const events: CalendarRangeEvent[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      singleEvents: "true",
+      orderBy: "startTime",
+      timeMin: startDate,
+      timeMax: endDate,
+      timeZone: THERAPIST_CALENDAR_TIMEZONE,
+      maxResults: "250",
+    });
+
+    if (pageToken) {
+      params.set("pageToken", pageToken);
+    }
+
+    const url = `${getGoogleCalendarApiBaseUrl()}/calendars/${PRIMARY_CALENDAR_ID}/events?${params.toString()}`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+
+    const json = (await response.json()) as GoogleCalendarListResponse;
+    if (!response.ok) {
+      const message = json.error?.message || `Google Calendar API failed (${response.status})`;
+      throw new Error(message);
+    }
+
+    for (const item of json.items ?? []) {
+      const mapped = mapGoogleRangeEvent(item, PRIMARY_CALENDAR_ID);
+      if (mapped) {
+        events.push(mapped);
+      }
+    }
+
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+
+  return events;
+}
+
+export type CalendarRangeEventsResult = {
+  connected: boolean;
+  startDate: string;
+  endDate: string;
+  events: CalendarRangeEvent[];
+};
+
+export async function getCalendarEventsForTherapist(
+  therapistAccountId: string,
+  startDate: string,
+  endDate: string,
+): Promise<CalendarRangeEventsResult> {
+  const connection = await getGoogleCalendarConnection(therapistAccountId);
+  if (!connection) {
+    return { connected: false, startDate, endDate, events: [] };
+  }
+
+  try {
+    const accessToken = await getAccessTokenForConnection(connection);
+    const events = await fetchCalendarEventsWithAccessToken(accessToken, startDate, endDate);
+    return { connected: true, startDate, endDate, events };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google Calendar request failed";
+    if (isGoogleAuthRevokedError(message)) {
+      await deleteGoogleCalendarConnection(therapistAccountId);
+      return { connected: false, startDate, endDate, events: [] };
     }
     throw error;
   }

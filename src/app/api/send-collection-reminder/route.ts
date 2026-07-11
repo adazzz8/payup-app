@@ -18,22 +18,6 @@ type ApiBody = {
   payload?: unknown;
 };
 
-function extractDebtIdFromBody(body: ApiBody): string | undefined {
-  return typeof body.debtId === "string" && body.debtId.trim().length > 0 ? body.debtId.trim() : undefined;
-}
-
-function extractCustomerIdFromUnknownPayload(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return undefined;
-  }
-  const customer = (payload as Record<string, unknown>).customer;
-  if (!customer || typeof customer !== "object" || Array.isArray(customer)) {
-    return undefined;
-  }
-  const id = (customer as Record<string, unknown>).id;
-  return typeof id === "string" && id.trim().length > 0 ? id.trim() : undefined;
-}
-
 /**
  * Production contract: Base44 MUST send `payload.paymentLink` — full https URL from the pay flow
  * (not optional). Validation rejects missing or non-https links so SMS never ships without a real link.
@@ -142,20 +126,7 @@ export async function POST(request: Request) {
   let body: ApiBody;
   try {
     body = (await request.json()) as ApiBody;
-    console.info(`${LOG_PREFIX} request received`, {
-      requestId,
-      therapistId: auth.context.userId,
-      debtId: extractDebtIdFromBody(body),
-      customerId: extractCustomerIdFromUnknownPayload(body.payload),
-      hasPayload: body.payload !== undefined,
-    });
   } catch {
-    console.warn(`${LOG_PREFIX} validation failed`, {
-      requestId,
-      therapistId: auth.context.userId,
-      success: false,
-      errorCode: "INVALID_JSON",
-    });
     pipeline.push("PAYLOAD FAILED");
     emitSmsAttemptLog({
       requestId,
@@ -171,12 +142,6 @@ export async function POST(request: Request) {
   const debtId = body.debtId;
 
   if (!isNonEmptyString(debtId)) {
-    console.warn(`${LOG_PREFIX} validation failed`, {
-      requestId,
-      therapistId: auth.context.userId,
-      success: false,
-      errorCode: "DEBT_ID_REQUIRED",
-    });
     pipeline.push("PAYLOAD FAILED");
     emitSmsAttemptLog({
       requestId,
@@ -202,17 +167,6 @@ export async function POST(request: Request) {
   if (body.payload !== undefined) {
     const normalizedPayload = normalizeCollectionReminderPayload(body.payload);
     if (!validatePayload(normalizedPayload, input.debtId)) {
-      console.warn(`${LOG_PREFIX} validation failed`, {
-        requestId,
-        therapistId: auth.context.userId,
-        debtId: input.debtId,
-        customerId:
-          normalizedPayload && typeof normalizedPayload === "object"
-            ? ((normalizedPayload as BuildCollectionMessageInput).customer?.id ?? undefined)
-            : undefined,
-        success: false,
-        errorCode: "INVALID_PAYLOAD",
-      });
       pipeline.push("PAYLOAD FAILED");
       emitSmsAttemptLog({
         requestId,
@@ -251,24 +205,7 @@ export async function POST(request: Request) {
   const customerId = extractCustomerId(input.payload);
 
   try {
-    console.info(`${LOG_PREFIX} sending`, {
-      requestId,
-      therapistId: auth.context.userId,
-      customerId,
-      debtId: input.debtId,
-    });
-
     const result = await sendCollectionReminder(input);
-
-    console.info(`${LOG_PREFIX} delivery result`, {
-      requestId,
-      therapistId: auth.context.userId,
-      customerId,
-      debtId: input.debtId,
-      success: result.success,
-      sid: result.sid,
-      errorCode: result.success ? null : result.error,
-    });
 
     if (result.success) {
       pipeline.push("TWILIO OK", "SMS SENT");

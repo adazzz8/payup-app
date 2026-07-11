@@ -1,5 +1,6 @@
 import type { BusinessContext } from "@/core/businesses/types";
 import type { DebtContext } from "@/core/debts/types";
+import type { CustomerPaymentMessageId } from "@/core/messaging/buildCustomerPaymentMessage";
 import type { NormalizedPaymentMethod, PaymentMethodInput } from "@/core/payments/types";
 
 export type CustomerContext = {
@@ -34,6 +35,13 @@ export type BuildCollectionMessageInput = {
    * Example: https://getpayup.io/pay/abc123 — never token-only; Core does not build links.
    */
   paymentLink: string;
+  /**
+   * Reminder engine selects the message identifier.
+   * Defaults to first_payment_request when omitted (backward compatible).
+   */
+  messageType?: CustomerPaymentMessageId | null;
+  /** Used by payment_reminder and recurring_reminder. Falls back to aggregated item count or 1. */
+  sessionCount?: number | null;
   /** Optional pre-formatted date fragment, e.g. "שלישי ה-7.5" (without leading "מיום "). */
   purchaseDateDisplay?: string | null;
 };
