@@ -6,8 +6,26 @@ import { isGoogleAuthRevokedError, refreshGoogleAccessToken } from "@/core/googl
 import {
   deleteGoogleCalendarConnection,
   getGoogleCalendarConnection,
+  setSelectedGoogleCalendar,
   type GoogleCalendarConnection,
 } from "@/core/google/connections";
+import { revokeGoogleRefreshToken } from "@/core/google/oauth";
+
+export class GoogleCalendarError extends Error {
+  constructor(
+    public readonly code: "NOT_CONNECTED" | "AUTHORIZATION_EXPIRED" | "REFRESH_FAILED" | "GOOGLE_API_FAILED",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export type AccessibleGoogleCalendar = {
+  id: string;
+  summary: string;
+  primary: boolean;
+  accessRole: string;
+};
 
 export type TodayCalendarEvent = {
   title: string;
@@ -151,7 +169,10 @@ function mapGoogleEvent(item: GoogleCalendarEventItem): TodayCalendarEvent | nul
   };
 }
 
-async function fetchTodayEventsWithAccessToken(accessToken: string): Promise<TodayCalendarEvent[]> {
+async function fetchTodayEventsWithAccessToken(
+  accessToken: string,
+  calendarId: string,
+): Promise<TodayCalendarEvent[]> {
   const { timeMin, timeMax } = getJerusalemDayBounds();
   const params = new URLSearchParams({
     singleEvents: "true",
@@ -162,7 +183,7 @@ async function fetchTodayEventsWithAccessToken(accessToken: string): Promise<Tod
     maxResults: "100",
   });
 
-  const url = `${getGoogleCalendarApiBaseUrl()}/calendars/primary/events?${params.toString()}`;
+  const url = `${getGoogleCalendarApiBaseUrl()}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`;
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -173,7 +194,7 @@ async function fetchTodayEventsWithAccessToken(accessToken: string): Promise<Tod
   const json = (await response.json()) as GoogleCalendarListResponse;
   if (!response.ok) {
     const message = json.error?.message || `Google Calendar API failed (${response.status})`;
-    throw new Error(message);
+    throw new GoogleCalendarError("GOOGLE_API_FAILED", message);
   }
 
   const events = (json.items ?? [])
@@ -196,24 +217,22 @@ export type TodayCalendarResult = {
 export async function getTodayCalendarForTherapist(therapistAccountId: string): Promise<TodayCalendarResult> {
   const connection = await getGoogleCalendarConnection(therapistAccountId);
   if (!connection) {
-    return { connected: false, events: [] };
+    throw new GoogleCalendarError("NOT_CONNECTED", "Not Connected");
   }
 
   try {
     const accessToken = await getAccessTokenForConnection(connection);
-    const events = await fetchTodayEventsWithAccessToken(accessToken);
+    const events = await fetchTodayEventsWithAccessToken(accessToken, connection.selectedCalendarId);
     return { connected: true, events };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Google Calendar request failed";
     if (isGoogleAuthRevokedError(message)) {
       await deleteGoogleCalendarConnection(therapistAccountId);
-      return { connected: false, events: [] };
+      throw new GoogleCalendarError("AUTHORIZATION_EXPIRED", "Google authorization expired");
     }
     throw error;
   }
 }
-
-const PRIMARY_CALENDAR_ID = "primary";
 
 function mapGoogleRangeEvent(item: GoogleCalendarEventItem, calendarId: string): CalendarRangeEvent | null {
   if (!item.id) {
@@ -238,6 +257,7 @@ function mapGoogleRangeEvent(item: GoogleCalendarEventItem, calendarId: string):
 
 async function fetchCalendarEventsWithAccessToken(
   accessToken: string,
+  calendarId: string,
   startDate: string,
   endDate: string,
 ): Promise<CalendarRangeEvent[]> {
@@ -258,7 +278,7 @@ async function fetchCalendarEventsWithAccessToken(
       params.set("pageToken", pageToken);
     }
 
-    const url = `${getGoogleCalendarApiBaseUrl()}/calendars/${PRIMARY_CALENDAR_ID}/events?${params.toString()}`;
+    const url = `${getGoogleCalendarApiBaseUrl()}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`;
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -269,11 +289,11 @@ async function fetchCalendarEventsWithAccessToken(
     const json = (await response.json()) as GoogleCalendarListResponse;
     if (!response.ok) {
       const message = json.error?.message || `Google Calendar API failed (${response.status})`;
-      throw new Error(message);
+      throw new GoogleCalendarError("GOOGLE_API_FAILED", message);
     }
 
     for (const item of json.items ?? []) {
-      const mapped = mapGoogleRangeEvent(item, PRIMARY_CALENDAR_ID);
+      const mapped = mapGoogleRangeEvent(item, calendarId);
       if (mapped) {
         events.push(mapped);
       }
@@ -299,19 +319,107 @@ export async function getCalendarEventsForTherapist(
 ): Promise<CalendarRangeEventsResult> {
   const connection = await getGoogleCalendarConnection(therapistAccountId);
   if (!connection) {
-    return { connected: false, startDate, endDate, events: [] };
+    throw new GoogleCalendarError("NOT_CONNECTED", "Not Connected");
   }
 
   try {
     const accessToken = await getAccessTokenForConnection(connection);
-    const events = await fetchCalendarEventsWithAccessToken(accessToken, startDate, endDate);
+    const events = await fetchCalendarEventsWithAccessToken(
+      accessToken,
+      connection.selectedCalendarId,
+      startDate,
+      endDate,
+    );
     return { connected: true, startDate, endDate, events };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Google Calendar request failed";
     if (isGoogleAuthRevokedError(message)) {
       await deleteGoogleCalendarConnection(therapistAccountId);
-      return { connected: false, startDate, endDate, events: [] };
+      throw new GoogleCalendarError("AUTHORIZATION_EXPIRED", "Google authorization expired");
     }
     throw error;
   }
+}
+
+async function getConnectedAccessToken(therapistAccountId: string): Promise<{
+  connection: GoogleCalendarConnection;
+  accessToken: string;
+}> {
+  const connection = await getGoogleCalendarConnection(therapistAccountId);
+  if (!connection) {
+    throw new GoogleCalendarError("NOT_CONNECTED", "Not Connected");
+  }
+
+  try {
+    return { connection, accessToken: await getAccessTokenForConnection(connection) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google token refresh failed";
+    if (isGoogleAuthRevokedError(message)) {
+      await deleteGoogleCalendarConnection(therapistAccountId);
+      throw new GoogleCalendarError("AUTHORIZATION_EXPIRED", "Google authorization expired");
+    }
+    throw new GoogleCalendarError("REFRESH_FAILED", message);
+  }
+}
+
+export async function listGoogleCalendarsForTherapist(
+  therapistAccountId: string,
+): Promise<AccessibleGoogleCalendar[]> {
+  const { accessToken } = await getConnectedAccessToken(therapistAccountId);
+  const response = await fetch(`${getGoogleCalendarApiBaseUrl()}/users/me/calendarList`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  const json = (await response.json()) as {
+    items?: Array<{ id?: string; summary?: string; primary?: boolean; accessRole?: string }>;
+    error?: { message?: string };
+  };
+  if (!response.ok) {
+    throw new GoogleCalendarError(
+      "GOOGLE_API_FAILED",
+      json.error?.message || `Google Calendar API failed (${response.status})`,
+    );
+  }
+  return (json.items ?? [])
+    .filter((calendar): calendar is Required<Pick<AccessibleGoogleCalendar, "id" | "summary">> & AccessibleGoogleCalendar =>
+      Boolean(calendar.id && calendar.summary),
+    )
+    .map((calendar) => ({
+      id: calendar.id,
+      summary: calendar.summary,
+      primary: Boolean(calendar.primary),
+      accessRole: calendar.accessRole ?? "none",
+    }));
+}
+
+export async function selectGoogleCalendarForTherapist(
+  therapistAccountId: string,
+  calendarId: string,
+): Promise<AccessibleGoogleCalendar> {
+  const calendars = await listGoogleCalendarsForTherapist(therapistAccountId);
+  const selected = calendars.find((calendar) => calendar.id === calendarId);
+  if (!selected) {
+    throw new GoogleCalendarError("GOOGLE_API_FAILED", "Selected calendar is not accessible.");
+  }
+  await setSelectedGoogleCalendar({
+    therapistAccountId,
+    calendarId: selected.id,
+    calendarSummary: selected.summary,
+  });
+  return selected;
+}
+
+export async function disconnectGoogleCalendarForTherapist(therapistAccountId: string): Promise<void> {
+  const connection = await getGoogleCalendarConnection(therapistAccountId);
+  if (!connection) {
+    throw new GoogleCalendarError("NOT_CONNECTED", "Not Connected");
+  }
+  try {
+    await revokeGoogleRefreshToken(connection.refreshToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google token revocation failed";
+    if (!isGoogleAuthRevokedError(message)) {
+      throw new GoogleCalendarError("GOOGLE_API_FAILED", message);
+    }
+  }
+  await deleteGoogleCalendarConnection(therapistAccountId);
 }

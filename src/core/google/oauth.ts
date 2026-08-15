@@ -7,7 +7,7 @@ import {
   getGoogleAuthBaseUrl,
   getGoogleTokenUrl,
 } from "@/core/google/config";
-import { createOAuthState } from "@/core/google/state";
+import { createOAuthState, type GoogleOAuthReturnTo } from "@/core/google/state";
 
 export type GoogleTokenResponse = {
   access_token: string;
@@ -54,7 +54,10 @@ export function decryptRefreshToken(ciphertext: string): string {
   return decrypted.toString("utf8");
 }
 
-export function buildGoogleOAuthUrl(therapistAccountId: string): string {
+export function buildGoogleOAuthUrl(
+  therapistAccountId: string,
+  returnTo: GoogleOAuthReturnTo = "dashboard",
+): string {
   const params = new URLSearchParams({
     client_id: getGoogleClientId(),
     redirect_uri: getGoogleOAuthRedirectUri(),
@@ -63,10 +66,23 @@ export function buildGoogleOAuthUrl(therapistAccountId: string): string {
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
-    state: createOAuthState(therapistAccountId),
+    state: createOAuthState(therapistAccountId, returnTo),
   });
 
   return `${getGoogleAuthBaseUrl()}?${params.toString()}`;
+}
+
+export async function revokeGoogleRefreshToken(refreshToken: string): Promise<void> {
+  const response = await fetch("https://oauth2.googleapis.com/revoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: refreshToken }).toString(),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Google token revocation failed (${response.status})`);
+  }
 }
 
 export async function exchangeAuthorizationCode(code: string): Promise<GoogleTokenResponse> {

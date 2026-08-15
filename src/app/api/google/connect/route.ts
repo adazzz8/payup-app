@@ -1,6 +1,7 @@
 import { requireAuth } from "@/core/auth/requireAuth";
 import { buildGoogleOAuthUrl } from "@/core/google/oauth";
 import { emptyCorsResponse, jsonWithCors } from "@/core/http/cors";
+import type { GoogleOAuthReturnTo } from "@/core/google/state";
 
 export async function GET(request: Request) {
   const auth = requireAuth(request);
@@ -9,7 +10,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const url = buildGoogleOAuthUrl(auth.context.userId);
+    const requestedReturnTo = new URL(request.url).searchParams.get("returnTo");
+    const returnTo: GoogleOAuthReturnTo =
+      requestedReturnTo === "onboarding" ? "onboarding" : "dashboard";
+    const url = buildGoogleOAuthUrl(auth.context.userId, returnTo);
     return jsonWithCors(request, { url }, 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to build Google OAuth URL";

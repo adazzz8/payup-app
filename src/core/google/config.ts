@@ -38,6 +38,16 @@ export function getGoogleOAuthSuccessRedirect(): string {
   return value;
 }
 
+export function getGoogleOAuthAppBaseUrl(): string {
+  const configured = process.env.GOOGLE_OAUTH_APP_BASE_URL?.trim();
+  const fallback = getGoogleOAuthSuccessRedirect();
+  const url = new URL(configured || fallback);
+  if (url.protocol !== "https:") {
+    throw new Error("GOOGLE_OAUTH_APP_BASE_URL must use https.");
+  }
+  return url.origin;
+}
+
 export function getGoogleAuthBaseUrl(): string {
   return GOOGLE_AUTH_BASE;
 }

@@ -1,5 +1,5 @@
 import { requireAuth } from "@/core/auth/requireAuth";
-import { getCalendarEventsForTherapist } from "@/core/google/calendar";
+import { getCalendarEventsForTherapist, GoogleCalendarError } from "@/core/google/calendar";
 import { emptyCorsResponse, jsonWithCors } from "@/core/http/cors";
 
 type EventsBody = {
@@ -62,6 +62,10 @@ export async function POST(request: Request) {
     );
     return jsonWithCors(request, result, 200);
   } catch (error) {
+    if (error instanceof GoogleCalendarError) {
+      const status = error.code === "NOT_CONNECTED" ? 409 : error.code === "AUTHORIZATION_EXPIRED" ? 401 : 502;
+      return jsonWithCors(request, { error: error.message, code: error.code }, status);
+    }
     const message = error instanceof Error ? error.message : "Failed to load calendar";
     console.error("[PayUp API][calendar/events] failed:", message);
     return jsonWithCors(request, { error: message, code: "CALENDAR_UNAVAILABLE" }, 502);

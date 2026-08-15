@@ -6,6 +6,14 @@ type OAuthStatePayload = {
   sub: string;
   exp: number;
   nonce: string;
+  returnTo: GoogleOAuthReturnTo;
+};
+
+export type GoogleOAuthReturnTo = "dashboard" | "onboarding";
+
+export type VerifiedOAuthState = {
+  therapistAccountId: string;
+  returnTo: GoogleOAuthReturnTo;
 };
 
 function getStateSigningSecret(): string {
@@ -28,19 +36,23 @@ function signPayload(encodedPayload: string): string {
   return createHmac("sha256", getStateSigningSecret()).update(encodedPayload, "utf8").digest("base64url");
 }
 
-export function createOAuthState(therapistAccountId: string): string {
+export function createOAuthState(
+  therapistAccountId: string,
+  returnTo: GoogleOAuthReturnTo = "dashboard",
+): string {
   const now = Math.floor(Date.now() / 1000);
   const payload: OAuthStatePayload = {
     sub: therapistAccountId,
     exp: now + STATE_TTL_SECONDS,
     nonce: randomBytes(16).toString("hex"),
+    returnTo,
   };
 
   const encoded = base64UrlEncode(JSON.stringify(payload));
   return `${encoded}.${signPayload(encoded)}`;
 }
 
-export function verifyOAuthState(state: string): string {
+export function verifyOAuthState(state: string): VerifiedOAuthState {
   const parts = state.split(".");
   if (parts.length !== 2) {
     throw new Error("Invalid OAuth state.");
@@ -68,11 +80,14 @@ export function verifyOAuthState(state: string): string {
   if (typeof payload.sub !== "string" || payload.sub.length === 0) {
     throw new Error("Invalid OAuth state subject.");
   }
+  if (payload.returnTo !== "dashboard" && payload.returnTo !== "onboarding") {
+    throw new Error("Invalid OAuth state return destination.");
+  }
 
   const now = Math.floor(Date.now() / 1000);
   if (typeof payload.exp !== "number" || payload.exp <= now) {
     throw new Error("OAuth state expired.");
   }
 
-  return payload.sub;
+  return { therapistAccountId: payload.sub, returnTo: payload.returnTo };
 }
