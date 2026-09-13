@@ -38,8 +38,13 @@ export type BuildCollectionMessageInput = {
   /**
    * Reminder engine selects the message identifier.
    * Defaults to first_payment_request when omitted (backward compatible).
+   * Explicit unknown values must be rejected by the API (no silent fallback).
    */
-  messageType?: CustomerPaymentMessageId | null;
+  messageType?: CustomerPaymentMessageId | string | null;
+  /**
+   * Pre-built SMS body from Base44 for monthly_balance_request (temporary passthrough).
+   */
+  messageText?: string | null;
   /** Used by payment_reminder and recurring_reminder. Falls back to aggregated item count or 1. */
   sessionCount?: number | null;
   /** Optional pre-formatted date fragment, e.g. "שלישי ה-7.5" (without leading "מיום "). */

@@ -9,6 +9,10 @@ import { sendCollectionReminder } from "@/core/reminders/sendCollectionReminder"
 import type { SendCollectionReminderInput } from "@/core/reminders/sendCollectionReminder";
 import type { BuildCollectionMessageInput } from "@/core/messaging/types";
 import { normalizeCollectionReminderPayload } from "@/core/messaging/normalizeCollectionReminderPayload";
+import {
+  CollectionMessageResolveError,
+  resolveMessageTypeField,
+} from "@/core/messaging/resolveCollectionPaymentMessage";
 import type { PaymentMethodInput } from "@/core/payments/types";
 
 const LOG_PREFIX = "[PayUp API][send-collection-reminder]";
@@ -16,6 +20,8 @@ const LOG_PREFIX = "[PayUp API][send-collection-reminder]";
 type ApiBody = {
   debtId?: unknown;
   payload?: unknown;
+  messageType?: unknown;
+  message_type?: unknown;
 };
 
 /**
@@ -100,6 +106,44 @@ function validatePayload(payload: unknown, debtId: string): payload is BuildColl
   return true;
 }
 
+function pickWrapperMessageType(body: ApiBody): string | undefined {
+  if (isNonEmptyString(body.messageType)) return body.messageType.trim();
+  if (isNonEmptyString(body.message_type)) return body.message_type.trim();
+  return undefined;
+}
+
+/**
+ * Prefer payload.messageType when present; otherwise use request-wrapper messageType.
+ * Explicit unknown values are rejected (no silent fallback to first_payment_request).
+ */
+function applyMessageTypeToPayload(
+  payload: BuildCollectionMessageInput,
+  wrapperMessageType: string | undefined,
+): { ok: true; payload: BuildCollectionMessageInput } | { ok: false; code: string; message: string } {
+  const fromPayload =
+    typeof payload.messageType === "string" && payload.messageType.trim().length > 0
+      ? payload.messageType.trim()
+      : undefined;
+  const raw = fromPayload ?? wrapperMessageType;
+  const resolution = resolveMessageTypeField(raw ?? null);
+
+  if (resolution.status === "unknown") {
+    return {
+      ok: false,
+      code: "UNKNOWN_MESSAGE_TYPE",
+      message: `Unknown messageType "${resolution.raw}". SMS was not sent.`,
+    };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      ...payload,
+      messageType: resolution.messageType,
+    },
+  };
+}
+
 function extractCustomerId(payload: BuildCollectionMessageInput | undefined): string | undefined {
   return payload?.customer?.id;
 }
@@ -163,6 +207,7 @@ export async function POST(request: Request) {
   }
 
   let input: SendCollectionReminderInput = { debtId: debtId.trim() };
+  const wrapperMessageType = pickWrapperMessageType(body);
 
   if (body.payload !== undefined) {
     const normalizedPayload = normalizeCollectionReminderPayload(body.payload);
@@ -197,7 +242,59 @@ export async function POST(request: Request) {
         422,
       );
     }
-    input = { debtId: input.debtId, payload: normalizedPayload as BuildCollectionMessageInput };
+
+    const withType = applyMessageTypeToPayload(
+      normalizedPayload as BuildCollectionMessageInput,
+      wrapperMessageType,
+    );
+    if (!withType.ok) {
+      pipeline.push("PAYLOAD FAILED");
+      emitSmsAttemptLog({
+        requestId,
+        outcome: "failed",
+        therapistId: auth.context.userId,
+        debtId: input.debtId,
+        customerId: (normalizedPayload as BuildCollectionMessageInput).customer?.id,
+        stage: "payload_validation",
+        errorCode: withType.code,
+        pipeline,
+      });
+      return jsonWithCors(
+        request,
+        {
+          error: withType.message,
+          code: withType.code,
+          details: [{ field: "messageType", message: withType.message }],
+        },
+        422,
+      );
+    }
+
+    input = { debtId: input.debtId, payload: withType.payload };
+  } else if (wrapperMessageType) {
+    // debtId-only path with explicit wrapper type — still reject unknown types early
+    const resolution = resolveMessageTypeField(wrapperMessageType);
+    if (resolution.status === "unknown") {
+      pipeline.push("PAYLOAD FAILED");
+      emitSmsAttemptLog({
+        requestId,
+        outcome: "failed",
+        therapistId: auth.context.userId,
+        debtId: input.debtId,
+        stage: "payload_validation",
+        errorCode: "UNKNOWN_MESSAGE_TYPE",
+        pipeline,
+      });
+      return jsonWithCors(
+        request,
+        {
+          error: `Unknown messageType "${resolution.raw}". SMS was not sent.`,
+          code: "UNKNOWN_MESSAGE_TYPE",
+          details: [{ field: "messageType", message: "Unrecognized messageType" }],
+        },
+        422,
+      );
+    }
   }
 
   pipeline.push("PAYLOAD OK");
@@ -234,6 +331,29 @@ export async function POST(request: Request) {
     });
     return jsonWithCors(request, result, 502);
   } catch (err) {
+    if (err instanceof CollectionMessageResolveError) {
+      pipeline.push("PAYLOAD FAILED");
+      emitSmsAttemptLog({
+        requestId,
+        outcome: "failed",
+        therapistId: auth.context.userId,
+        customerId,
+        debtId: input.debtId,
+        stage: "payload_validation",
+        errorCode: err.code,
+        pipeline,
+      });
+      return jsonWithCors(
+        request,
+        {
+          error: err.message,
+          code: err.code,
+          details: [{ field: "payload", message: err.message }],
+        },
+        422,
+      );
+    }
+
     const message = err instanceof Error ? err.message : "Internal server error";
     pipeline.push("RAILWAY FAILED");
     emitSmsAttemptLog({

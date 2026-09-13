@@ -104,6 +104,11 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
     normalized.messageType = messageType;
   }
 
+  const messageText = pickString(payload, "messageText", "message_text");
+  if (messageText) {
+    normalized.messageText = messageText;
+  }
+
   const sessionCount = pickNumber(payload, "sessionCount", "session_count");
   if (sessionCount !== undefined) {
     normalized.sessionCount = sessionCount;

@@ -23,6 +23,10 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
 
   const normalizedPaymentMethods = normalizePaymentMethods(input.paymentMethods);
   const items = input.debt.items ?? [];
+  const resolvedPaymentLink =
+    "paymentLink" in payload && typeof payload.paymentLink === "string"
+      ? payload.paymentLink
+      : input.paymentLink;
 
   return {
     messageText,
@@ -30,9 +34,9 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
     metadata: {
       includedPaymentMethods: normalizedPaymentMethods,
       includesItems: items.length > 0,
-      includesAmount: Boolean(amountDigits),
+      includesAmount: Boolean(amountDigits) || messageType === "cumulative_balance_after_session",
       includesPurchaseDate: input.isAggregated !== true && Boolean(purchaseSuffix),
-      resolvedPaymentLink: payload.paymentLink,
+      resolvedPaymentLink,
     },
   };
 }
