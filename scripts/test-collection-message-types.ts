@@ -198,18 +198,76 @@ record(
   },
 );
 
-// 8. payment_reminder — existing behavior
+// 8. payment_reminder — amount + single opening emoji
 record(
-  "payment_reminder",
-  "resolveCollectionPaymentMessage",
-  "existing payment_reminder copy",
-  "known type",
+  "payment_reminder amount 1200 / sessions 4",
+  "resolveCollectionPaymentMessage + totalAggregatedAmount",
+  "₪1200 + 4 פגישות + one 😊",
+  "known type; amount from totalAggregatedAmount",
   () => {
     const built = buildCollectionMessage(
-      basePayload({ messageType: "payment_reminder", sessionCount: 1 }),
+      basePayload({
+        messageType: "payment_reminder",
+        sessionCount: 4,
+        totalAggregatedAmount: 1200,
+      }),
     );
-    assert(built.messageText.includes("רק תזכורת קטנה"), "legacy copy");
-    assert(built.messageText.includes("עבור הפגישה האחרונה"), "session");
+    assert(built.messageText.includes("₪1200"), "amount");
+    assert(built.messageText.includes("עבור 4 פגישות"), "sessions");
+    assert(built.messageText.includes("https://getpayup.io/pay/abc123"), "link");
+    assert(built.messageText.includes("רק תזכורת קטנה\n"), "no emoji on reminder line");
+    assert(!built.messageText.includes("רק תזכורת קטנה 😊"), "duplicate emoji removed");
+    const opening = built.messageText.split("\n\n")[0] ?? "";
+    assert(opening === "שלום דנה 😊", `opening: ${opening}`);
+    assert((built.messageText.match(/😊/g) || []).length === 1, "exactly one 😊 in message");
+    assert(built.messageText.includes("קיים חיוב פתוח בסך"), "balance wording");
+    assert(!built.messageText.includes("תודה שהיית היום"), "no first_payment fallback");
+  },
+);
+
+record(
+  "payment_reminder amount 150",
+  "resolveCollectionPaymentMessage + totalAggregatedAmount",
+  "₪150",
+  "amount follows payload",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "payment_reminder",
+        sessionCount: 1,
+        totalAggregatedAmount: 150,
+      }),
+    );
+    assert(built.messageText.includes("₪150"), "amount 150");
+    assert(built.messageText.includes("עבור הפגישה האחרונה"), "session singular");
+  },
+);
+
+record(
+  "payment_reminder without amount",
+  "PAYMENT_REMINDER_AMOUNT_REQUIRED",
+  "no invented amount / no SMS text",
+  "rejects",
+  () => {
+    let threw = false;
+    try {
+      buildCollectionMessage(
+        basePayload({
+          messageType: "payment_reminder",
+          sessionCount: 1,
+          debt: { id: "debt_1", currency: "ILS" },
+          totalAggregatedAmount: null,
+        }),
+      );
+    } catch (error) {
+      threw = true;
+      assert(
+        error instanceof CollectionMessageResolveError &&
+          error.code === "PAYMENT_REMINDER_AMOUNT_REQUIRED",
+        "code",
+      );
+    }
+    assert(threw, "must throw");
   },
 );
 
@@ -292,7 +350,9 @@ record(
       "recurring_reminder",
     ] as const;
     for (const messageType of types) {
-      const out = buildCollectionMessage(basePayload({ messageType, sessionCount: 1 }));
+      const out = buildCollectionMessage(
+        basePayload({ messageType, sessionCount: 1, totalAggregatedAmount: 200 }),
+      );
       assert(typeof out.messageText === "string" && out.messageText.length > 0, `${messageType} text`);
       assert(out.metadata.resolvedPaymentLink.startsWith("https://"), `${messageType} link`);
     }

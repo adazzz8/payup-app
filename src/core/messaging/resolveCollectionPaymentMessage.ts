@@ -7,6 +7,7 @@ import { resolvePaymentLinkFromPayload } from "@/core/messaging/resolvePaymentLi
 import {
   formatIlsAmountDigitsForTemplate,
   parseNumericAmount,
+  resolveDebtAmountForSms,
 } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput } from "@/core/messaging/types";
 
@@ -54,6 +55,7 @@ export class CollectionMessageResolveError extends Error {
     public readonly code:
       | "UNKNOWN_MESSAGE_TYPE"
       | "CUMULATIVE_AMOUNT_REQUIRED"
+      | "PAYMENT_REMINDER_AMOUNT_REQUIRED"
       | "MONTHLY_MESSAGE_TEXT_REQUIRED",
   ) {
     super(message);
@@ -97,11 +99,27 @@ export function resolveCollectionPaymentMessage(input: BuildCollectionMessageInp
         payload: { customerName, paymentLink, amountDigits },
       };
     }
-    case "payment_reminder":
+    case "payment_reminder": {
+      // Primary SoT: totalAggregatedAmount. Debt fields only if that value is absent.
+      const amount =
+        parseNumericAmount(input.totalAggregatedAmount) ?? resolveDebtAmountForSms(input.debt);
+      const amountDigits = formatIlsAmountDigitsForTemplate(amount);
+      if (!amountDigits) {
+        throw new CollectionMessageResolveError(
+          "payment_reminder requires a valid totalAggregatedAmount (or debt outstanding amount); amount will not be invented.",
+          "PAYMENT_REMINDER_AMOUNT_REQUIRED",
+        );
+      }
       return {
         messageType,
-        payload: { customerName, paymentLink, sessionCount: resolveSessionCount(input) },
+        payload: {
+          customerName,
+          paymentLink,
+          sessionCount: resolveSessionCount(input),
+          amountDigits,
+        },
       };
+    }
     case "reminder_after_today_promise":
       return {
         messageType,

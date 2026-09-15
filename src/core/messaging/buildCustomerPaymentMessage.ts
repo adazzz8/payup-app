@@ -41,6 +41,7 @@ export type CustomerPaymentMessageInputMap = {
     customerName: string;
     paymentLink: string;
     sessionCount: number;
+    amountDigits: string;
   };
   reminder_after_today_promise: {
     customerName: string;
@@ -130,9 +131,9 @@ function renderPaymentReminder(input: CustomerPaymentMessageInputMap["payment_re
   return [
     `שלום ${input.customerName} 😊`,
     "",
-    "רק תזכורת קטנה 😊",
+    "רק תזכורת קטנה",
     "",
-    "כרגע עדיין קיים חיוב פתוח.",
+    `כרגע עדיין קיים חיוב פתוח בסך ₪${input.amountDigits}.`,
     "",
     formatSessionLine(input.sessionCount),
     "",
