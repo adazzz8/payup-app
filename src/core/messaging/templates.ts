@@ -125,3 +125,76 @@ export function formatPurchaseDateSuffixHebrew(purchaseDate: string | null | und
   }
   return full.replace(/^מיום\s+/, "").trim() || null;
 }
+
+const THERAPIST_MESSAGE_TIMEZONE = "Asia/Jerusalem";
+
+/** Calendar YMD in Asia/Jerusalem, e.g. "2026-09-09". */
+export function formatJerusalemCalendarYmd(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: THERAPIST_MESSAGE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Day.month in Asia/Jerusalem, e.g. "9.9". */
+export function formatAppointmentDateDayMonth(appointmentDate: string | null | undefined): string | null {
+  if (!appointmentDate || typeof appointmentDate !== "string" || appointmentDate.trim().length === 0) {
+    return null;
+  }
+
+  const d = new Date(appointmentDate.trim());
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: THERAPIST_MESSAGE_TIMEZONE,
+    day: "numeric",
+    month: "numeric",
+  }).formatToParts(d);
+
+  const dayStr = parts.find((p) => p.type === "day")?.value;
+  const monthStr = parts.find((p) => p.type === "month")?.value;
+  if (!dayStr || !monthStr) {
+    return null;
+  }
+
+  const day = Number(dayStr);
+  const month = Number(monthStr);
+  if (!Number.isFinite(day) || !Number.isFinite(month)) {
+    return null;
+  }
+
+  return `${day}.${month}`;
+}
+
+/**
+ * Session appointment is backdated when its Asia/Jerusalem calendar date is strictly before today.
+ * Missing/invalid appointmentDate → null (caller keeps existing today-session copy).
+ */
+export function resolveBackdatedAppointmentDate(
+  appointmentDate: string | null | undefined,
+  now: Date = new Date(),
+): { appointmentDateDisplay: string } | null {
+  if (!appointmentDate || typeof appointmentDate !== "string" || appointmentDate.trim().length === 0) {
+    return null;
+  }
+
+  const appointment = new Date(appointmentDate.trim());
+  if (Number.isNaN(appointment.getTime())) {
+    return null;
+  }
+
+  const appointmentDateDisplay = formatAppointmentDateDayMonth(appointmentDate);
+  if (!appointmentDateDisplay) {
+    return null;
+  }
+
+  if (formatJerusalemCalendarYmd(appointment) < formatJerusalemCalendarYmd(now)) {
+    return { appointmentDateDisplay };
+  }
+
+  return null;
+}

@@ -10,6 +10,7 @@ import {
   resolveCollectionPaymentMessage,
   resolveMessageTypeField,
 } from "../src/core/messaging/resolveCollectionPaymentMessage";
+import { formatJerusalemCalendarYmd } from "../src/core/messaging/templates";
 import type { BuildCollectionMessageInput } from "../src/core/messaging/types";
 
 type Row = {
@@ -139,6 +140,87 @@ record(
       );
     }
     assert(threw, "must throw");
+  },
+);
+
+// 3b. appointmentDate — today keeps existing copy; earlier date uses backdated variant
+record(
+  "first_payment_request appointmentDate=today",
+  "resolveBackdatedAppointmentDate → not backdated",
+  "existing תודה שהיית היום",
+  "today Asia/Jerusalem",
+  () => {
+    const todayYmd = formatJerusalemCalendarYmd(new Date());
+    const appointmentDate = `${todayYmd}T16:00:00+03:00`;
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "first_payment_request",
+        appointmentDate,
+        totalAggregatedAmount: 600,
+      }),
+    );
+    assert(built.messageText.includes("תודה שהיית היום ❤️"), "today copy");
+    assert(!built.messageText.includes("קיבלתי עדכון על המפגש"), "not backdated");
+  },
+);
+
+record(
+  "first_payment_request appointmentDate=backdated",
+  "backdated Asia/Jerusalem calendar date",
+  "9.9 + ₪600, no היום",
+  "uses totalAggregatedAmount",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "first_payment_request",
+        appointmentDate: "2026-09-09T16:00:00+03:00",
+        totalAggregatedAmount: 600,
+      }),
+    );
+    assert(
+      built.messageText.includes("קיבלתי עדכון על המפגש שלכם ב-9.9"),
+      `date line: ${built.messageText}`,
+    );
+    assert(built.messageText.includes("היתרה המעודכנת כרגע היא ₪600"), "balance");
+    assert(!built.messageText.includes("תודה שהיית היום"), "no today wording");
+  },
+);
+
+record(
+  "cumulative_balance_after_session appointmentDate=backdated",
+  "shared backdated template",
+  "9.9 + ₪1800, no היום",
+  "amount from totalAggregatedAmount",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "cumulative_balance_after_session",
+        appointmentDate: "2026-09-09T16:00:00+03:00",
+        totalAggregatedAmount: 1800,
+      }),
+    );
+    assert(built.messageText.includes("קיבלתי עדכון על המפגש שלכם ב-9.9"), "date");
+    assert(built.messageText.includes("היתרה המעודכנת כרגע היא ₪1800"), "balance");
+    assert(!built.messageText.includes("תודה שהיית היום"), "no today");
+    assert(!built.messageText.includes("הסכום המצטבר כרגע"), "not today cumulative copy");
+  },
+);
+
+record(
+  "first_payment_request missing appointmentDate",
+  "no backdated detection",
+  "existing first_payment copy",
+  "backward compatible",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "first_payment_request",
+        appointmentDate: null,
+        totalAggregatedAmount: 600,
+      }),
+    );
+    assert(built.messageText.includes("תודה שהיית היום ❤️"), "legacy today copy");
+    assert(!built.messageText.includes("קיבלתי עדכון על המפגש"), "no backdated");
   },
 );
 

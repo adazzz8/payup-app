@@ -49,6 +49,11 @@ export type BuildCollectionMessageInput = {
   sessionCount?: number | null;
   /** Optional pre-formatted date fragment, e.g. "שלישי ה-7.5" (without leading "מיום "). */
   purchaseDateDisplay?: string | null;
+  /**
+   * Actual Session.appointment_date from Base44 (ISO). Used only to choose today vs backdated
+   * copy for first_payment_request / cumulative_balance_after_session.
+   */
+  appointmentDate?: string | null;
 };
 
 export type BuildCollectionMessageOutput = {

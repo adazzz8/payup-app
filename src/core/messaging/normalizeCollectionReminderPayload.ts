@@ -93,6 +93,11 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
     normalized.purchaseDateDisplay = purchaseDateDisplay;
   }
 
+  const appointmentDate = pickString(payload, "appointmentDate", "appointment_date");
+  if (appointmentDate) {
+    normalized.appointmentDate = appointmentDate;
+  }
+
   const messageType = pickString(
     payload,
     "messageType",

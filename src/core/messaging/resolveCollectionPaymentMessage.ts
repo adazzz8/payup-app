@@ -7,6 +7,7 @@ import { resolvePaymentLinkFromPayload } from "@/core/messaging/resolvePaymentLi
 import {
   formatIlsAmountDigitsForTemplate,
   parseNumericAmount,
+  resolveBackdatedAppointmentDate,
   resolveDebtAmountForSms,
 } from "@/core/messaging/templates";
 import type { BuildCollectionMessageInput } from "@/core/messaging/types";
@@ -80,11 +81,35 @@ export function resolveCollectionPaymentMessage(input: BuildCollectionMessageInp
   const paymentLink = resolvePaymentLinkFromPayload(input);
 
   switch (messageType) {
-    case "first_payment_request":
+    case "first_payment_request": {
+      const backdated = resolveBackdatedAppointmentDate(input.appointmentDate);
+      if (backdated) {
+        const amountDigits = formatIlsAmountDigitsForTemplate(
+          parseNumericAmount(input.totalAggregatedAmount),
+        );
+        if (!amountDigits) {
+          throw new CollectionMessageResolveError(
+            "backdated first_payment_request requires a valid totalAggregatedAmount; amount will not be invented.",
+            "CUMULATIVE_AMOUNT_REQUIRED",
+          );
+        }
+        return {
+          messageType,
+          payload: {
+            customerName,
+            paymentLink,
+            backdatedSession: {
+              appointmentDateDisplay: backdated.appointmentDateDisplay,
+              amountDigits,
+            },
+          },
+        };
+      }
       return {
         messageType,
         payload: { customerName, paymentLink },
       };
+    }
     case "cumulative_balance_after_session": {
       const amount = parseNumericAmount(input.totalAggregatedAmount);
       const amountDigits = formatIlsAmountDigitsForTemplate(amount);
@@ -94,9 +119,21 @@ export function resolveCollectionPaymentMessage(input: BuildCollectionMessageInp
           "CUMULATIVE_AMOUNT_REQUIRED",
         );
       }
+      const backdated = resolveBackdatedAppointmentDate(input.appointmentDate);
       return {
         messageType,
-        payload: { customerName, paymentLink, amountDigits },
+        payload: {
+          customerName,
+          paymentLink,
+          amountDigits,
+          ...(backdated
+            ? {
+                backdatedSession: {
+                  appointmentDateDisplay: backdated.appointmentDateDisplay,
+                },
+              }
+            : {}),
+        },
       };
     }
     case "payment_reminder": {

@@ -31,11 +31,20 @@ export type CustomerPaymentMessageInputMap = {
   first_payment_request: {
     customerName: string;
     paymentLink: string;
+    /** Prior calendar-day session in Asia/Jerusalem — shared backdated copy. */
+    backdatedSession?: {
+      appointmentDateDisplay: string;
+      amountDigits: string;
+    };
   };
   cumulative_balance_after_session: {
     customerName: string;
     paymentLink: string;
     amountDigits: string;
+    /** Prior calendar-day session in Asia/Jerusalem — shared backdated copy. */
+    backdatedSession?: {
+      appointmentDateDisplay: string;
+    };
   };
   payment_reminder: {
     customerName: string;
@@ -87,7 +96,40 @@ function formatSessionLine(sessionCount: number): string {
   return sessionCount === 1 ? "עבור הפגישה האחרונה." : `עבור ${sessionCount} פגישות.`;
 }
 
+function renderBackdatedSessionPaymentRequest(input: {
+  customerName: string;
+  paymentLink: string;
+  appointmentDateDisplay: string;
+  amountDigits: string;
+}): string {
+  return [
+    `שלום ${input.customerName} 😊`,
+    "",
+    `קיבלתי עדכון על המפגש שלכם ב-${input.appointmentDateDisplay}.`,
+    "",
+    `היתרה המעודכנת כרגע היא ₪${input.amountDigits}.`,
+    "",
+    "מצרפת לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
+    "",
+    "בקישור אפשר:",
+    paymentLinkOptionsCompact,
+    "",
+    input.paymentLink,
+    "",
+    "תודה רבה 🙏",
+  ].join("\n");
+}
+
 function renderFirstPaymentRequest(input: CustomerPaymentMessageInputMap["first_payment_request"]): string {
+  if (input.backdatedSession) {
+    return renderBackdatedSessionPaymentRequest({
+      customerName: input.customerName,
+      paymentLink: input.paymentLink,
+      appointmentDateDisplay: input.backdatedSession.appointmentDateDisplay,
+      amountDigits: input.backdatedSession.amountDigits,
+    });
+  }
+
   return [
     `שלום ${input.customerName} 😊`,
     "",
@@ -108,6 +150,15 @@ function renderFirstPaymentRequest(input: CustomerPaymentMessageInputMap["first_
 function renderCumulativeBalanceAfterSession(
   input: CustomerPaymentMessageInputMap["cumulative_balance_after_session"],
 ): string {
+  if (input.backdatedSession) {
+    return renderBackdatedSessionPaymentRequest({
+      customerName: input.customerName,
+      paymentLink: input.paymentLink,
+      appointmentDateDisplay: input.backdatedSession.appointmentDateDisplay,
+      amountDigits: input.amountDigits,
+    });
+  }
+
   return [
     `שלום ${input.customerName} 😊`,
     "",
