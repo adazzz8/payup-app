@@ -26,7 +26,7 @@ export function buildCollectionMessage(input: BuildCollectionMessageInput): Buil
   const resolvedPaymentLink =
     "paymentLink" in payload && typeof payload.paymentLink === "string"
       ? payload.paymentLink
-      : input.paymentLink;
+      : input.paymentLink?.trim() || "";
 
   return {
     messageText,

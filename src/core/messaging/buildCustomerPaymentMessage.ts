@@ -12,6 +12,7 @@ const customerPaymentMessageIds = {
   pay_now_admin_update: "pay_now_admin_update",
   recurring_reminder: "recurring_reminder",
   monthly_balance_request: "monthly_balance_request",
+  payup_intro: "payup_intro",
 } as const;
 
 export type CustomerPaymentMessageId =
@@ -27,8 +28,20 @@ export function listCustomerPaymentMessageIds(): CustomerPaymentMessageId[] {
   return [...customerPaymentMessageIdValues];
 }
 
+/** Shared clinic identification / first-contact framing for patient-facing SMS. */
+export type ClinicMessageFraming = {
+  /** When set, clinic identification line is included. Missing → legacy copy (no clinic line). */
+  clinicDisplayName?: string | null;
+  /** When true and clinicDisplayName is set, include the PayUp first-contact explanation. */
+  isFirstPayUpContact?: boolean;
+};
+
+type WithClinicFraming = {
+  clinic?: ClinicMessageFraming;
+};
+
 export type CustomerPaymentMessageInputMap = {
-  first_payment_request: {
+  first_payment_request: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
     /** Prior calendar-day session in Asia/Jerusalem — shared backdated copy. */
@@ -37,7 +50,7 @@ export type CustomerPaymentMessageInputMap = {
       amountDigits: string;
     };
   };
-  cumulative_balance_after_session: {
+  cumulative_balance_after_session: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
     amountDigits: string;
@@ -46,33 +59,37 @@ export type CustomerPaymentMessageInputMap = {
       appointmentDateDisplay: string;
     };
   };
-  payment_reminder: {
+  payment_reminder: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
     sessionCount: number;
     amountDigits: string;
   };
-  reminder_after_today_promise: {
+  reminder_after_today_promise: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
   };
-  reminder_after_week_promise: {
+  reminder_after_week_promise: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
   };
-  pay_now_admin_update: {
+  pay_now_admin_update: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
   };
-  recurring_reminder: {
+  recurring_reminder: WithClinicFraming & {
     customerName: string;
     paymentLink: string;
     sessionCount: number;
   };
-  /** Pre-rendered by Base44; Core passes through after validation. */
-  monthly_balance_request: {
+  /** Pre-rendered by Base44; Core passes through after optional clinic preamble injection. */
+  monthly_balance_request: WithClinicFraming & {
     messageText: string;
     paymentLink: string;
+  };
+  payup_intro: {
+    customerName: string;
+    clinicDisplayName: string;
   };
 };
 
@@ -92,8 +109,32 @@ const paymentLinkOptionsBlock = [
   "✅ לעדכן שהתשלום יבוצע בהמשך",
 ].join("\n");
 
+const FIRST_CONTACT_INTRO =
+  "הקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.";
+
 function formatSessionLine(sessionCount: number): string {
   return sessionCount === 1 ? "עבור הפגישה האחרונה." : `עבור ${sessionCount} פגישות.`;
+}
+
+function resolvedClinicName(clinic?: ClinicMessageFraming): string | null {
+  const name = clinic?.clinicDisplayName?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
+function buildClinicHeaderLines(clinic?: ClinicMessageFraming): string[] {
+  const name = resolvedClinicName(clinic);
+  if (!name) {
+    return [];
+  }
+  const lines = [`הודעה מהקליניקה של ${name}.`, ""];
+  if (clinic?.isFirstPayUpContact === true) {
+    lines.push(FIRST_CONTACT_INTRO, "");
+  }
+  return lines;
+}
+
+function joinMessage(parts: Array<string | null | undefined>): string {
+  return parts.filter((p): p is string => typeof p === "string").join("\n");
 }
 
 function renderBackdatedSessionPaymentRequest(input: {
@@ -101,15 +142,37 @@ function renderBackdatedSessionPaymentRequest(input: {
   paymentLink: string;
   appointmentDateDisplay: string;
   amountDigits: string;
+  clinic?: ClinicMessageFraming;
 }): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `שלום ${input.customerName} 😊`,
+      "",
+      `קיבלתי עדכון על המפגש שלכם ב-${input.appointmentDateDisplay}.`,
+      "",
+      `היתרה המעודכנת כרגע היא ₪${input.amountDigits}.`,
+      "",
+      "מצרפת לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
+      "",
+      "בקישור אפשר:",
+      paymentLinkOptionsCompact,
+      "",
+      input.paymentLink,
+      "",
+      "תודה רבה 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `שלום ${input.customerName} 😊`,
     "",
-    `קיבלתי עדכון על המפגש שלכם ב-${input.appointmentDateDisplay}.`,
+    ...buildClinicHeaderLines(input.clinic),
+    `קיבלנו עדכון על המפגש שלכם ב-${input.appointmentDateDisplay}.`,
     "",
     `היתרה המעודכנת כרגע היא ₪${input.amountDigits}.`,
     "",
-    "מצרפת לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
+    "מצרפים לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
     "",
     "בקישור אפשר:",
     paymentLinkOptionsCompact,
@@ -117,7 +180,7 @@ function renderBackdatedSessionPaymentRequest(input: {
     input.paymentLink,
     "",
     "תודה רבה 🙏",
-  ].join("\n");
+  ]);
 }
 
 function renderFirstPaymentRequest(input: CustomerPaymentMessageInputMap["first_payment_request"]): string {
@@ -127,24 +190,44 @@ function renderFirstPaymentRequest(input: CustomerPaymentMessageInputMap["first_
       paymentLink: input.paymentLink,
       appointmentDateDisplay: input.backdatedSession.appointmentDateDisplay,
       amountDigits: input.backdatedSession.amountDigits,
+      clinic: input.clinic,
     });
   }
 
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `שלום ${input.customerName} 😊`,
+      "",
+      "תודה שהיית היום ❤️",
+      "",
+      "מצרפת לך כאן לינק לתשלום או עדכון, לנוחיותך 🙂",
+      "",
+      "בקישור אפשר:",
+      paymentLinkOptionsCompact,
+      "",
+      input.paymentLink,
+      "",
+      "תודה רבה,",
+      "ושיהיה המשך יום נפלא 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `שלום ${input.customerName} 😊`,
     "",
+    ...buildClinicHeaderLines(input.clinic),
     "תודה שהיית היום ❤️",
     "",
-    "מצרפת לך כאן לינק לתשלום או עדכון, לנוחיותך 🙂",
+    "מצרפים לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
     "",
     "בקישור אפשר:",
     paymentLinkOptionsCompact,
     "",
     input.paymentLink,
     "",
-    "תודה רבה,",
-    "ושיהיה המשך יום נפלא 🙏",
-  ].join("\n");
+    "תודה רבה 🙏",
+  ]);
 }
 
 function renderCumulativeBalanceAfterSession(
@@ -156,15 +239,38 @@ function renderCumulativeBalanceAfterSession(
       paymentLink: input.paymentLink,
       appointmentDateDisplay: input.backdatedSession.appointmentDateDisplay,
       amountDigits: input.amountDigits,
+      clinic: input.clinic,
     });
   }
 
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `שלום ${input.customerName} 😊`,
+      "",
+      "תודה שהיית היום ❤️",
+      "",
+      "מצרפת לך כאן לינק לתשלום או עדכון, לנוחיותך 🙂",
+      "",
+      `לידיעתך, הסכום המצטבר כרגע, כולל פגישות קודמות, עומד על ₪${input.amountDigits}.`,
+      "",
+      "בקישור אפשר:",
+      paymentLinkOptionsCompact,
+      "",
+      input.paymentLink,
+      "",
+      "תודה רבה,",
+      "ושיהיה המשך יום נפלא 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `שלום ${input.customerName} 😊`,
     "",
+    ...buildClinicHeaderLines(input.clinic),
     "תודה שהיית היום ❤️",
     "",
-    "מצרפת לך כאן לינק לתשלום או עדכון, לנוחיותך 🙂",
+    "מצרפים לך כאן לינק לתשלום או לעדכון, לנוחיותך.",
     "",
     `לידיעתך, הסכום המצטבר כרגע, כולל פגישות קודמות, עומד על ₪${input.amountDigits}.`,
     "",
@@ -173,69 +279,147 @@ function renderCumulativeBalanceAfterSession(
     "",
     input.paymentLink,
     "",
-    "תודה רבה,",
-    "ושיהיה המשך יום נפלא 🙏",
-  ].join("\n");
+    "תודה רבה 🙏",
+  ]);
 }
 
 function renderPaymentReminder(input: CustomerPaymentMessageInputMap["payment_reminder"]): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `שלום ${input.customerName} 😊`,
+      "",
+      "רק תזכורת קטנה",
+      "",
+      `כרגע עדיין קיים חיוב פתוח בסך ₪${input.amountDigits}.`,
+      "",
+      formatSessionLine(input.sessionCount),
+      "",
+      "בקישור למטה אפשר לבחור איך להמשיך:",
+      "",
+      paymentLinkOptionsBlock,
+      "",
+      input.paymentLink,
+      "",
+      "תודה רבה 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `שלום ${input.customerName} 😊`,
     "",
-    "רק תזכורת קטנה",
+    ...buildClinicHeaderLines(input.clinic),
+    "רק תזכורת קטנה.",
     "",
     `כרגע עדיין קיים חיוב פתוח בסך ₪${input.amountDigits}.`,
     "",
     formatSessionLine(input.sessionCount),
     "",
     "בקישור למטה אפשר לבחור איך להמשיך:",
-    "",
-    paymentLinkOptionsBlock,
+    paymentLinkOptionsCompact,
     "",
     input.paymentLink,
     "",
     "תודה רבה 🙏",
-  ].join("\n");
+  ]);
 }
 
 function renderReminderAfterTodayPromise(
   input: CustomerPaymentMessageInputMap["reminder_after_today_promise"],
 ): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `היי ${input.customerName} 🙂`,
+      "רק בודקת איתך שהתשלום הוסדר מאז אתמול.",
+      "",
+      "במידה ולא, מצרפת לך שוב את הלינק כאן לנוחותך:",
+      input.paymentLink,
+    ]);
+  }
+
+  return joinMessage([
     `היי ${input.customerName} 🙂`,
-    "רק בודקת איתך שהתשלום הוסדר מאז אתמול.",
     "",
-    "במידה ולא, מצרפת לך שוב את הלינק כאן לנוחותך:",
+    ...buildClinicHeaderLines(input.clinic),
+    "רק בודקים איתך שהתשלום הוסדר מאז אתמול.",
+    "",
+    "במידה ולא, מצרפים לך שוב את הלינק כאן לנוחותך:",
     input.paymentLink,
-  ].join("\n");
+  ]);
 }
 
 function renderReminderAfterWeekPromise(
   input: CustomerPaymentMessageInputMap["reminder_after_week_promise"],
 ): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `היי ${input.customerName} 🙂`,
+      "רק בודקת איתך אם התשלום הוסדר במהלך השבוע.",
+      "",
+      "אם עדיין לא, מצרפת לך שוב את הלינק כאן לנוחיותך:",
+      input.paymentLink,
+    ]);
+  }
+
+  return joinMessage([
     `היי ${input.customerName} 🙂`,
-    "רק בודקת איתך אם התשלום הוסדר במהלך השבוע.",
     "",
-    "אם עדיין לא, מצרפת לך שוב את הלינק כאן לנוחיותך:",
+    ...buildClinicHeaderLines(input.clinic),
+    "רק בודקים איתך אם התשלום הוסדר במהלך השבוע.",
+    "",
+    "אם עדיין לא, מצרפים לך שוב את הלינק כאן לנוחיותך:",
     input.paymentLink,
-  ].join("\n");
+  ]);
 }
 
 function renderPayNowAdminUpdate(input: CustomerPaymentMessageInputMap["pay_now_admin_update"]): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `היי ${input.customerName} 🙂`,
+      "רק כדי שאוכל לעשות סדר ברישומים, אשמח לעדכון באיזה אמצעי תשלום בחרת מתוך האפשרויות.",
+      input.paymentLink,
+      "תודה 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `היי ${input.customerName} 🙂`,
-    "רק כדי שאוכל לעשות סדר ברישומים, אשמח לעדכון באיזה אמצעי תשלום בחרת מתוך האפשרויות.",
+    "",
+    ...buildClinicHeaderLines(input.clinic),
+    "רק כדי שנוכל לעשות סדר ברישומים, נשמח לעדכון באיזה אמצעי תשלום בחרת מתוך האפשרויות.",
     input.paymentLink,
     "תודה 🙏",
-  ].join("\n");
+  ]);
 }
 
 function renderRecurringReminder(input: CustomerPaymentMessageInputMap["recurring_reminder"]): string {
-  return [
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return joinMessage([
+      `שלום ${input.customerName} 😊`,
+      "",
+      "רק רציתי להזכיר שכרגע עדיין קיים חיוב פתוח.",
+      "",
+      formatSessionLine(input.sessionCount),
+      "",
+      "בקישור אפשר:",
+      "",
+      paymentLinkOptionsBlock,
+      "",
+      input.paymentLink,
+      "",
+      "תודה רבה 🙏",
+    ]);
+  }
+
+  return joinMessage([
     `שלום ${input.customerName} 😊`,
     "",
-    "רק רציתי להזכיר שכרגע עדיין קיים חיוב פתוח.",
+    ...buildClinicHeaderLines(input.clinic),
+    "רק רצינו להזכיר שכרגע עדיין קיים חיוב פתוח.",
     "",
     formatSessionLine(input.sessionCount),
     "",
@@ -246,13 +430,43 @@ function renderRecurringReminder(input: CustomerPaymentMessageInputMap["recurrin
     input.paymentLink,
     "",
     "תודה רבה 🙏",
-  ].join("\n");
+  ]);
 }
 
 function renderMonthlyBalanceRequest(
   input: CustomerPaymentMessageInputMap["monthly_balance_request"],
 ): string {
-  return input.messageText;
+  const clinicName = resolvedClinicName(input.clinic);
+  if (!clinicName) {
+    return input.messageText;
+  }
+
+  const header = buildClinicHeaderLines(input.clinic);
+  const text = input.messageText;
+  const greetingMatch = text.match(/^(שלום[^\n]*|היי[^\n]*)\n\n?/);
+  if (greetingMatch) {
+    const greeting = greetingMatch[1];
+    const rest = text.slice(greetingMatch[0].length);
+    return joinMessage([greeting, "", ...header, rest]);
+  }
+
+  return joinMessage([...header, text]);
+}
+
+function renderPayupIntro(input: CustomerPaymentMessageInputMap["payup_intro"]): string {
+  return joinMessage([
+    `שלום ${input.customerName} 😊`,
+    "",
+    `הודעה מהקליניקה של ${input.clinicDisplayName}.`,
+    "",
+    "רצינו לעדכן שהקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה.",
+    "",
+    "מעכשיו, הודעות בנושא תשלומים ועדכונים מהקליניקה עשויות להגיע אליך מכאן.",
+    "",
+    "המטרה היא להפוך את העדכון והתשלום לפשוטים ונוחים יותר.",
+    "",
+    "תודה רבה 🙏",
+  ]);
 }
 
 export function buildCustomerPaymentMessage<T extends CustomerPaymentMessageId>(
@@ -282,6 +496,8 @@ export function buildCustomerPaymentMessage<T extends CustomerPaymentMessageId>(
       return renderRecurringReminder(data as CustomerPaymentMessageInputMap["recurring_reminder"]);
     case customerPaymentMessageIds.monthly_balance_request:
       return renderMonthlyBalanceRequest(data as CustomerPaymentMessageInputMap["monthly_balance_request"]);
+    case customerPaymentMessageIds.payup_intro:
+      return renderPayupIntro(data as CustomerPaymentMessageInputMap["payup_intro"]);
     default: {
       const _exhaustive: never = type;
       return _exhaustive;

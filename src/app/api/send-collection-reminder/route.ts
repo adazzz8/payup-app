@@ -22,6 +22,11 @@ type ApiBody = {
   payload?: unknown;
   messageType?: unknown;
   message_type?: unknown;
+  clinicDisplayName?: unknown;
+  clinic_display_name?: unknown;
+  isFirstPayUpContact?: unknown;
+  is_first_payup_contact?: unknown;
+  is_first_pay_up_contact?: unknown;
 };
 
 /**
@@ -50,9 +55,14 @@ function validatePaymentMethods(input: unknown): input is PaymentMethodInput[] {
   );
 }
 
-function validatePayload(payload: unknown, debtId: string): payload is BuildCollectionMessageInput {
+function validatePayload(
+  payload: unknown,
+  debtId: string,
+  options?: { requirePaymentLink?: boolean },
+): payload is BuildCollectionMessageInput {
   if (!payload || typeof payload !== "object") return false;
   const p = payload as Record<string, unknown>;
+  const requirePaymentLink = options?.requirePaymentLink !== false;
 
   const business = p.business;
   const customer = p.customer;
@@ -89,13 +99,19 @@ function validatePayload(payload: unknown, debtId: string): payload is BuildColl
     return false;
   }
 
-  const paymentLink = p.paymentLink;
-  if (!isNonEmptyString(paymentLink)) {
-    return false;
-  }
-  const trimmedLink = paymentLink.trim();
-  if (!/^https:\/\//i.test(trimmedLink)) {
-    return false;
+  if (requirePaymentLink) {
+    const paymentLink = p.paymentLink;
+    if (!isNonEmptyString(paymentLink)) {
+      return false;
+    }
+    const trimmedLink = paymentLink.trim();
+    if (!/^https:\/\//i.test(trimmedLink)) {
+      return false;
+    }
+  } else if (p.paymentLink !== undefined && p.paymentLink !== null) {
+    if (!isNonEmptyString(p.paymentLink) || !/^https:\/\//i.test(String(p.paymentLink).trim())) {
+      return false;
+    }
   }
 
   const purchaseDateDisplay = p.purchaseDateDisplay;
@@ -112,13 +128,31 @@ function pickWrapperMessageType(body: ApiBody): string | undefined {
   return undefined;
 }
 
+function pickWrapperClinicDisplayName(body: ApiBody): string | undefined {
+  if (isNonEmptyString(body.clinicDisplayName)) return body.clinicDisplayName.trim();
+  if (isNonEmptyString(body.clinic_display_name)) return body.clinic_display_name.trim();
+  return undefined;
+}
+
+function pickWrapperIsFirstPayUpContact(body: ApiBody): boolean | undefined {
+  if (typeof body.isFirstPayUpContact === "boolean") return body.isFirstPayUpContact;
+  if (typeof body.is_first_payup_contact === "boolean") return body.is_first_payup_contact;
+  if (typeof body.is_first_pay_up_contact === "boolean") return body.is_first_pay_up_contact;
+  return undefined;
+}
+
 /**
  * Prefer payload.messageType when present; otherwise use request-wrapper messageType.
  * Explicit unknown values are rejected (no silent fallback to first_payment_request).
+ * Wrapper clinicDisplayName / isFirstPayUpContact fill gaps when payload omits them.
  */
 function applyMessageTypeToPayload(
   payload: BuildCollectionMessageInput,
   wrapperMessageType: string | undefined,
+  wrapperClinic?: {
+    clinicDisplayName?: string;
+    isFirstPayUpContact?: boolean;
+  },
 ): { ok: true; payload: BuildCollectionMessageInput } | { ok: false; code: string; message: string } {
   const fromPayload =
     typeof payload.messageType === "string" && payload.messageType.trim().length > 0
@@ -135,11 +169,20 @@ function applyMessageTypeToPayload(
     };
   }
 
+  const clinicDisplayName =
+    payload.clinicDisplayName?.trim() || wrapperClinic?.clinicDisplayName || null;
+  const isFirstPayUpContact =
+    typeof payload.isFirstPayUpContact === "boolean"
+      ? payload.isFirstPayUpContact
+      : wrapperClinic?.isFirstPayUpContact;
+
   return {
     ok: true,
     payload: {
       ...payload,
       messageType: resolution.messageType,
+      ...(clinicDisplayName ? { clinicDisplayName } : {}),
+      ...(typeof isFirstPayUpContact === "boolean" ? { isFirstPayUpContact } : {}),
     },
   };
 }
@@ -208,10 +251,23 @@ export async function POST(request: Request) {
 
   let input: SendCollectionReminderInput = { debtId: debtId.trim() };
   const wrapperMessageType = pickWrapperMessageType(body);
+  const wrapperClinicDisplayName = pickWrapperClinicDisplayName(body);
+  const wrapperIsFirstPayUpContact = pickWrapperIsFirstPayUpContact(body);
 
   if (body.payload !== undefined) {
     const normalizedPayload = normalizeCollectionReminderPayload(body.payload);
-    if (!validatePayload(normalizedPayload, input.debtId)) {
+    const earlyTypeRaw =
+      (normalizedPayload &&
+      typeof normalizedPayload === "object" &&
+      typeof (normalizedPayload as Record<string, unknown>).messageType === "string"
+        ? String((normalizedPayload as Record<string, unknown>).messageType).trim()
+        : undefined) ?? wrapperMessageType;
+    const earlyType = resolveMessageTypeField(earlyTypeRaw ?? null);
+    const requirePaymentLink = !(
+      earlyType.status === "known" && earlyType.messageType === "payup_intro"
+    );
+
+    if (!validatePayload(normalizedPayload, input.debtId, { requirePaymentLink })) {
       pipeline.push("PAYLOAD FAILED");
       emitSmsAttemptLog({
         requestId,
@@ -234,8 +290,9 @@ export async function POST(request: Request) {
           details: [
             {
               field: "payload",
-              message:
-                "Base44 production payloads MUST include paymentLink (full https URL from your pay flow). Also: business, customer, debt (id matching debtId), paymentMethods.",
+              message: requirePaymentLink
+                ? "Base44 production payloads MUST include paymentLink (full https URL from your pay flow). Also: business, customer, debt (id matching debtId), paymentMethods."
+                : "payup_intro requires business, customer, debt (id matching debtId), and paymentMethods. paymentLink is optional.",
             },
           ],
         },
@@ -246,6 +303,10 @@ export async function POST(request: Request) {
     const withType = applyMessageTypeToPayload(
       normalizedPayload as BuildCollectionMessageInput,
       wrapperMessageType,
+      {
+        clinicDisplayName: wrapperClinicDisplayName,
+        isFirstPayUpContact: wrapperIsFirstPayUpContact,
+      },
     );
     if (!withType.ok) {
       pipeline.push("PAYLOAD FAILED");

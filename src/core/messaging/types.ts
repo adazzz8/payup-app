@@ -33,8 +33,9 @@ export type BuildCollectionMessageInput = {
   /**
    * Full https payment URL from Base44 — same URL the customer opens (unique per debt/customer).
    * Example: https://getpayup.io/pay/abc123 — never token-only; Core does not build links.
+   * Optional for payup_intro (standalone introduction, not a payment request).
    */
-  paymentLink: string;
+  paymentLink?: string;
   /**
    * Reminder engine selects the message identifier.
    * Defaults to first_payment_request when omitted (backward compatible).
@@ -54,6 +55,12 @@ export type BuildCollectionMessageInput = {
    * copy for first_payment_request / cumulative_balance_after_session.
    */
   appointmentDate?: string | null;
+  /** Patient-facing clinic name for identification line. Missing → legacy copy. */
+  clinicDisplayName?: string | null;
+  /** Optional professional title; available for future natural use, not auto-inserted. */
+  therapistProfessionalTitle?: string | null;
+  /** When true, include first-contact PayUp explanation (requires clinicDisplayName). */
+  isFirstPayUpContact?: boolean | null;
 };
 
 export type BuildCollectionMessageOutput = {

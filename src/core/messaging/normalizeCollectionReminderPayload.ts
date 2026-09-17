@@ -98,6 +98,34 @@ export function normalizeCollectionReminderPayload(raw: unknown): unknown {
     normalized.appointmentDate = appointmentDate;
   }
 
+  const clinicDisplayName = pickString(
+    payload,
+    "clinicDisplayName",
+    "clinic_display_name",
+  );
+  if (clinicDisplayName) {
+    normalized.clinicDisplayName = clinicDisplayName;
+  }
+
+  const therapistProfessionalTitle = pickString(
+    payload,
+    "therapistProfessionalTitle",
+    "therapist_professional_title",
+  );
+  if (therapistProfessionalTitle) {
+    normalized.therapistProfessionalTitle = therapistProfessionalTitle;
+  }
+
+  const isFirstPayUpContact = pickBoolean(
+    payload,
+    "isFirstPayUpContact",
+    "is_first_payup_contact",
+    "is_first_pay_up_contact",
+  );
+  if (isFirstPayUpContact !== undefined) {
+    normalized.isFirstPayUpContact = isFirstPayUpContact;
+  }
+
   const messageType = pickString(
     payload,
     "messageType",

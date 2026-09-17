@@ -441,6 +441,173 @@ record(
   },
 );
 
+// 12. clinic identification + first-contact + payup_intro
+record(
+  "first_payment_request clinic no intro",
+  "clinicDisplayName + isFirstPayUpContact=false",
+  "clinic line; no long intro; מצרפים",
+  "clinic framing",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "first_payment_request",
+        clinicDisplayName: "רוני גריי",
+        isFirstPayUpContact: false,
+      }),
+    );
+    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic line");
+    assert(!built.messageText.includes("הקליניקה התחילה להשתמש ב-PayUp"), "no intro");
+    assert(built.messageText.includes("מצרפים לך כאן לינק"), "plural voice");
+    assert(built.messageText.includes("תודה שהיית היום"), "today copy");
+  },
+);
+
+record(
+  "first_payment_request clinic + first contact",
+  "isFirstPayUpContact=true",
+  "clinic line + intro",
+  "first contact",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "first_payment_request",
+        clinicDisplayName: "רוני גריי",
+        isFirstPayUpContact: true,
+      }),
+    );
+    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
+    assert(
+      built.messageText.includes(
+        "הקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.",
+      ),
+      "intro",
+    );
+  },
+);
+
+record(
+  "backdated cumulative clinic voice",
+  "appointmentDate + clinicDisplayName",
+  "קיבלנו + ₪1800 + 9.9",
+  "plural clinic voice",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "cumulative_balance_after_session",
+        appointmentDate: "2026-09-09T16:00:00+03:00",
+        totalAggregatedAmount: 1800,
+        clinicDisplayName: "רוני גריי",
+        isFirstPayUpContact: false,
+      }),
+    );
+    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
+    assert(built.messageText.includes("קיבלנו עדכון על המפגש שלכם ב-9.9"), "date plural");
+    assert(built.messageText.includes("היתרה המעודכנת כרגע היא ₪1800"), "amount");
+    assert(built.messageText.includes("מצרפים לך כאן לינק"), "plural");
+    assert(!built.messageText.includes("תודה שהיית היום"), "no today");
+    assert(!built.messageText.includes("קיבלתי"), "no singular");
+  },
+);
+
+record(
+  "payment_reminder with clinic",
+  "clinic + totalAggregatedAmount",
+  "₪1200 + one 😊 + clinic line",
+  "amount preserved",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "payment_reminder",
+        sessionCount: 4,
+        totalAggregatedAmount: 1200,
+        clinicDisplayName: "רוני גריי",
+      }),
+    );
+    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
+    assert(built.messageText.includes("₪1200"), "amount");
+    assert(built.messageText.includes("עבור 4 פגישות"), "sessions");
+    assert((built.messageText.match(/😊/g) || []).length === 1, "one emoji");
+    assert(!built.messageText.includes("רק תזכורת קטנה 😊"), "no duplicate emoji");
+  },
+);
+
+record(
+  "payup_intro exact template",
+  "resolve + render",
+  "standalone intro",
+  "clinicDisplayName required",
+  () => {
+    const built = buildCollectionMessage(
+      basePayload({
+        messageType: "payup_intro",
+        clinicDisplayName: "רוני גריי",
+        isFirstPayUpContact: true,
+        paymentLink: undefined,
+        customer: { id: "cust_1", fullName: "אדם", phone: "0500000000" },
+      }),
+    );
+    assert(built.messageText.includes("שלום אדם 😊"), "greeting");
+    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
+    assert(
+      built.messageText.includes(
+        "רצינו לעדכן שהקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה.",
+      ),
+      "intro line",
+    );
+    assert(
+      built.messageText.includes(
+        "מעכשיו, הודעות בנושא תשלומים ועדכונים מהקליניקה עשויות להגיע אליך מכאן.",
+      ),
+      "from here",
+    );
+    assert(
+      built.messageText.includes("המטרה היא להפוך את העדכון והתשלום לפשוטים ונוחים יותר."),
+      "goal",
+    );
+    assert(!built.messageText.includes("לשלם עכשיו"), "not a payment request");
+  },
+);
+
+record(
+  "legacy missing clinicDisplayName",
+  "no clinic framing",
+  "מצרפת / existing copy",
+  "backward compatible",
+  () => {
+    const built = buildCollectionMessage(basePayload({ messageType: "first_payment_request" }));
+    assert(!built.messageText.includes("הודעה מהקליניקה"), "no clinic line");
+    assert(built.messageText.includes("מצרפת לך כאן לינק"), "legacy singular");
+    assert(built.messageText.includes("ושיהיה המשך יום נפלא"), "legacy closing");
+  },
+);
+
+record(
+  "payup_intro missing clinicDisplayName",
+  "CLINIC_DISPLAY_NAME_REQUIRED",
+  "no SMS text",
+  "rejects",
+  () => {
+    let threw = false;
+    try {
+      buildCollectionMessage(
+        basePayload({
+          messageType: "payup_intro",
+          clinicDisplayName: null,
+          paymentLink: undefined,
+        }),
+      );
+    } catch (error) {
+      threw = true;
+      assert(
+        error instanceof CollectionMessageResolveError &&
+          error.code === "CLINIC_DISPLAY_NAME_REQUIRED",
+        "code",
+      );
+    }
+    assert(threw, "must throw");
+  },
+);
+
 console.log("\nContext | Resolver/template | Render test | Validation test | PASS/FAIL");
 console.log("--- | --- | --- | --- | ---");
 for (const row of rows) {
