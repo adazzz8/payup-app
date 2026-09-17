@@ -110,7 +110,7 @@ const paymentLinkOptionsBlock = [
 ].join("\n");
 
 const FIRST_CONTACT_INTRO =
-  "הקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.";
+  "הקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.";
 
 function formatSessionLine(sessionCount: number): string {
   return sessionCount === 1 ? "עבור הפגישה האחרונה." : `עבור ${sessionCount} פגישות.`;
@@ -459,7 +459,7 @@ function renderPayupIntro(input: CustomerPaymentMessageInputMap["payup_intro"]):
     "",
     `הודעה מהקליניקה של ${input.clinicDisplayName}.`,
     "",
-    "רצינו לעדכן שהקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה.",
+    "רצינו לעדכן שהקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה.",
     "",
     "מעכשיו, הודעות בנושא תשלומים ועדכונים מהקליניקה עשויות להגיע אליך מכאן.",
     "",

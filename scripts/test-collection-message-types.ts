@@ -456,7 +456,7 @@ record(
       }),
     );
     assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic line");
-    assert(!built.messageText.includes("הקליניקה התחילה להשתמש ב-PayUp"), "no intro");
+    assert(!built.messageText.includes("הקליניקה התחילה להשתמש בשירותים של PayUp"), "no intro");
     assert(built.messageText.includes("מצרפים לך כאן לינק"), "plural voice");
     assert(built.messageText.includes("תודה שהיית היום"), "today copy");
   },
@@ -478,7 +478,7 @@ record(
     assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
     assert(
       built.messageText.includes(
-        "הקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.",
+        "הקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה, ולכן מעכשיו הודעות בנושא עשויות להגיע אליך מכאן.",
       ),
       "intro",
     );
@@ -550,7 +550,7 @@ record(
     assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
     assert(
       built.messageText.includes(
-        "רצינו לעדכן שהקליניקה התחילה להשתמש ב-PayUp לצורך עדכוני תשלום וגבייה.",
+        "רצינו לעדכן שהקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה.",
       ),
       "intro line",
     );
