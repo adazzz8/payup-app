@@ -74,6 +74,8 @@ export async function GET(request: Request) {
     await upsertGoogleCalendarConnection({
       therapistAccountId: verifiedState.therapistAccountId,
       refreshToken: completed.refreshToken,
+      accessToken: completed.accessToken,
+      accessTokenExpiresAt: completed.accessTokenExpiresAt,
       googleEmail: completed.googleEmail,
       scopes: completed.scopes,
     });

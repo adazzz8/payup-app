@@ -2,14 +2,22 @@ import {
   getGoogleCalendarApiBaseUrl,
   THERAPIST_CALENDAR_TIMEZONE,
 } from "@/core/google/config";
-import { isGoogleAuthRevokedError, refreshGoogleAccessToken } from "@/core/google/oauth";
+import {
+  isGoogleAuthRevokedError,
+  refreshGoogleAccessToken,
+  revokeGoogleRefreshToken,
+} from "@/core/google/oauth";
 import {
   deleteGoogleCalendarConnection,
   getGoogleCalendarConnection,
+  persistGoogleTokensAfterRefresh,
   setSelectedGoogleCalendar,
   type GoogleCalendarConnection,
 } from "@/core/google/connections";
-import { revokeGoogleRefreshToken } from "@/core/google/oauth";
+import {
+  computeAccessTokenExpiresAt,
+  shouldRefreshAccessToken,
+} from "@/core/google/tokenPersistence";
 
 export class GoogleCalendarError extends Error {
   constructor(
@@ -205,7 +213,23 @@ async function fetchTodayEventsWithAccessToken(
 }
 
 async function getAccessTokenForConnection(connection: GoogleCalendarConnection): Promise<string> {
+  if (
+    !shouldRefreshAccessToken(connection.accessToken, connection.accessTokenExpiresAt)
+  ) {
+    return connection.accessToken as string;
+  }
+
   const tokenResponse = await refreshGoogleAccessToken(connection.refreshToken);
+  const expiresAt = computeAccessTokenExpiresAt(tokenResponse.expires_in);
+
+  await persistGoogleTokensAfterRefresh({
+    therapistAccountId: connection.therapistAccountId,
+    existingRefreshToken: connection.refreshToken,
+    accessToken: tokenResponse.access_token,
+    accessTokenExpiresAt: expiresAt ? expiresAt.toISOString() : null,
+    incomingRefreshToken: tokenResponse.refresh_token,
+  });
+
   return tokenResponse.access_token;
 }
 

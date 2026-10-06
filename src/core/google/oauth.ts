@@ -8,6 +8,11 @@ import {
   getGoogleTokenUrl,
 } from "@/core/google/config";
 import { createOAuthState, type GoogleOAuthReturnTo } from "@/core/google/state";
+import {
+  computeAccessTokenExpiresAt,
+  isGoogleAuthRevokedError,
+  resolveRefreshTokenToPersist,
+} from "@/core/google/tokenPersistence";
 
 export type GoogleTokenResponse = {
   access_token: string;
@@ -16,6 +21,8 @@ export type GoogleTokenResponse = {
   scope?: string;
   token_type?: string;
 };
+
+export { isGoogleAuthRevokedError };
 
 function getTokenEncryptionKey(): Buffer {
   const secret =
@@ -53,6 +60,10 @@ export function decryptRefreshToken(ciphertext: string): string {
   const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
   return decrypted.toString("utf8");
 }
+
+/** Same encryption scheme as refresh tokens; naming kept for call-site clarity. */
+export const encryptAccessToken = encryptRefreshToken;
+export const decryptAccessToken = decryptRefreshToken;
 
 export function buildGoogleOAuthUrl(
   therapistAccountId: string,
@@ -165,25 +176,26 @@ export async function completeGoogleOAuth(
   existingRefreshToken?: string | null,
 ): Promise<{
   refreshToken: string;
+  accessToken: string;
+  accessTokenExpiresAt: string | null;
   googleEmail: string | null;
   scopes: string;
 }> {
   const tokens = await exchangeAuthorizationCode(code);
   const googleEmail = await fetchGoogleUserEmail(tokens.access_token);
-  const refreshToken = tokens.refresh_token ?? existingRefreshToken ?? null;
+  const refreshToken = resolveRefreshTokenToPersist(tokens.refresh_token, existingRefreshToken);
 
   if (!refreshToken) {
     throw new Error("Google did not return a refresh token.");
   }
 
+  const expiresAt = computeAccessTokenExpiresAt(tokens.expires_in);
+
   return {
     refreshToken,
+    accessToken: tokens.access_token,
+    accessTokenExpiresAt: expiresAt ? expiresAt.toISOString() : null,
     googleEmail,
     scopes: tokens.scope ?? GOOGLE_CALENDAR_READONLY_SCOPE,
   };
-}
-
-export function isGoogleAuthRevokedError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes("invalid_grant") || lower.includes("token has been expired or revoked");
 }
