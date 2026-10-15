@@ -546,24 +546,9 @@ record(
         customer: { id: "cust_1", fullName: "אדם", phone: "0500000000" },
       }),
     );
-    assert(built.messageText.includes("שלום אדם 😊"), "greeting");
-    assert(built.messageText.includes("הודעה מהקליניקה של רוני גריי."), "clinic");
-    assert(
-      built.messageText.includes(
-        "רצינו לעדכן שהקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה.",
-      ),
-      "intro line",
-    );
-    assert(
-      built.messageText.includes(
-        "מעכשיו, הודעות בנושא תשלומים ועדכונים מהקליניקה עשויות להגיע אליך מכאן.",
-      ),
-      "from here",
-    );
-    assert(
-      built.messageText.includes("המטרה היא להפוך את העדכון והתשלום לפשוטים ונוחים יותר."),
-      "goal",
-    );
+    const expected =
+      "היי אדם, רוני גריי התחילה להשתמש ב-PayUp לניהול ועדכוני תשלומים. מעכשיו ייתכן שתקבל/י מ-PayUp הודעות הקשורות לתשלומים שלך בקליניקה. אין צורך לעשות דבר כרגע.";
+    assert(built.messageText === expected, `template: ${built.messageText}`);
     assert(!built.messageText.includes("לשלם עכשיו"), "not a payment request");
   },
 );

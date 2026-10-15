@@ -1,7 +1,10 @@
 /**
  * Sole public API for customer payment SMS copy.
  * Template bodies and render helpers are private to this module.
+ * payup_intro body lives in payupIntroTemplate.ts and is shared with preview.
  */
+
+import { renderPayupIntroMessage } from "@/core/messaging/payupIntroTemplate";
 
 const customerPaymentMessageIds = {
   first_payment_request: "first_payment_request",
@@ -454,19 +457,7 @@ function renderMonthlyBalanceRequest(
 }
 
 function renderPayupIntro(input: CustomerPaymentMessageInputMap["payup_intro"]): string {
-  return joinMessage([
-    `שלום ${input.customerName} 😊`,
-    "",
-    `הודעה מהקליניקה של ${input.clinicDisplayName}.`,
-    "",
-    "רצינו לעדכן שהקליניקה התחילה להשתמש בשירותים של PayUp לצורך עדכוני תשלום וגבייה.",
-    "",
-    "מעכשיו, הודעות בנושא תשלומים ועדכונים מהקליניקה עשויות להגיע אליך מכאן.",
-    "",
-    "המטרה היא להפוך את העדכון והתשלום לפשוטים ונוחים יותר.",
-    "",
-    "תודה רבה 🙏",
-  ]);
+  return renderPayupIntroMessage(input);
 }
 
 export function buildCustomerPaymentMessage<T extends CustomerPaymentMessageId>(

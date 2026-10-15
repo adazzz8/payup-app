@@ -13,6 +13,10 @@ import {
   CollectionMessageResolveError,
   resolveMessageTypeField,
 } from "@/core/messaging/resolveCollectionPaymentMessage";
+import { deliverPayupIntro } from "@/core/messaging/payupIntroDelivery";
+import { createSupabasePayupIntroDeliveryStore } from "@/core/messaging/payupIntroDeliveryStoreSupabase";
+import { readPayupIntroRequest } from "@/core/messaging/payupIntroRequest";
+import { sendSms } from "@/core/providers/twilio/sendSms";
 import type { PaymentMethodInput } from "@/core/payments/types";
 
 const LOG_PREFIX = "[PayUp API][send-collection-reminder]";
@@ -224,6 +228,83 @@ export async function POST(request: Request) {
       pipeline,
     });
     return jsonWithCors(request, { error: "Invalid JSON body", code: "INVALID_JSON" }, 400);
+  }
+
+  const introRead = readPayupIntroRequest(body);
+  if (introRead.kind === "invalid") {
+    pipeline.push("PAYLOAD FAILED");
+    emitSmsAttemptLog({
+      requestId,
+      outcome: "failed",
+      therapistId: auth.context.userId,
+      stage: "payload_validation",
+      errorCode: introRead.code,
+      pipeline,
+    });
+    return jsonWithCors(
+      request,
+      {
+        error: "Validation failed",
+        code: introRead.code,
+        details: [{ field: introRead.field, message: introRead.message }],
+      },
+      422,
+    );
+  }
+
+  if (introRead.kind === "ready") {
+    const result = await deliverPayupIntro({
+      ...introRead.context,
+      store: createSupabasePayupIntroDeliveryStore(),
+      send: async ({ to, body: messageBody }) => {
+        const sms = await sendSms({ to, body: messageBody });
+        return { success: sms.success, sid: sms.sid, error: sms.error };
+      },
+    });
+
+    const httpStatus = result.status === "failed" ? 502 : 200;
+    if (result.status === "sent") {
+      pipeline.push("TWILIO OK", "SMS SENT");
+      emitSmsAttemptLog({
+        requestId,
+        outcome: "sent",
+        therapistId: auth.context.userId,
+        customerId: introRead.context.customerId,
+        sid: result.sid,
+        pipeline,
+      });
+    } else if (result.status === "failed") {
+      pipeline.push("TWILIO FAILED");
+      emitSmsAttemptLog({
+        requestId,
+        outcome: "failed",
+        therapistId: auth.context.userId,
+        customerId: introRead.context.customerId,
+        stage: "twilio",
+        errorCode: result.error ?? "PAYUP_INTRO_FAILED",
+        pipeline,
+      });
+    } else {
+      pipeline.push("INTRO SCHEDULED");
+    }
+    return jsonWithCors(
+      request,
+      {
+        success: result.status === "sent",
+        status: result.status,
+        deliveryStatus: result.status,
+        provider: "twilio",
+        sid: result.sid,
+        messageText: result.renderedMessage,
+        renderedMessage: result.renderedMessage,
+        characterCount: result.characterCount,
+        scheduledFor: result.scheduledFor,
+        attempts: result.attempts,
+        error: result.error,
+        duplicateSuppressed: result.duplicateSuppressed,
+      },
+      httpStatus,
+    );
   }
 
   const debtId = body.debtId;
