@@ -9,11 +9,14 @@ export type PayupIntroDeliveryRecord = {
   scheduledFor: string | null;
   providerMessageId: string | null;
   messageText: string;
+  phone: string | null;
 };
 
 export interface PayupIntroDeliveryStore {
   get(businessId: string, customerId: string): Promise<PayupIntroDeliveryRecord | null>;
   save(record: PayupIntroDeliveryRecord): Promise<void>;
+  listDue(now: Date): Promise<PayupIntroDeliveryRecord[]>;
+  claimScheduled(businessId: string, customerId: string): Promise<PayupIntroDeliveryRecord | null>;
 }
 
 export function createMemoryPayupIntroDeliveryStore(): PayupIntroDeliveryStore {
@@ -26,6 +29,19 @@ export function createMemoryPayupIntroDeliveryStore(): PayupIntroDeliveryStore {
     },
     async save(record) {
       rows.set(keyOf(record.businessId, record.customerId), { ...record });
+    },
+    async listDue(now) {
+      return [...rows.values()].filter((row) => {
+        if (row.status !== "scheduled" || !row.scheduledFor) return false;
+        return new Date(row.scheduledFor).getTime() <= now.getTime();
+      });
+    },
+    async claimScheduled(businessId, customerId) {
+      const row = rows.get(keyOf(businessId, customerId));
+      if (!row || row.status !== "scheduled") return null;
+      const claimed: PayupIntroDeliveryRecord = { ...row, status: "pending" };
+      rows.set(keyOf(businessId, customerId), claimed);
+      return claimed;
     },
   };
 }

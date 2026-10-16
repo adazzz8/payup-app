@@ -23,6 +23,11 @@ function nonEmpty(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+/** Preview-only placeholder. A real send must not persist this id. */
+export function isPreviewOnlyCustomerId(customerId: string): boolean {
+  return customerId.trim().toLowerCase() === "preview";
+}
+
 export function readPayupIntroRequest(body: {
   payload?: unknown;
   messageType?: unknown;

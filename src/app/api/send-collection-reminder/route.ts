@@ -15,7 +15,7 @@ import {
 } from "@/core/messaging/resolveCollectionPaymentMessage";
 import { deliverPayupIntro } from "@/core/messaging/payupIntroDelivery";
 import { createSupabasePayupIntroDeliveryStore } from "@/core/messaging/payupIntroDeliveryStoreSupabase";
-import { readPayupIntroRequest } from "@/core/messaging/payupIntroRequest";
+import { isPreviewOnlyCustomerId, readPayupIntroRequest } from "@/core/messaging/payupIntroRequest";
 import { sendSms } from "@/core/providers/twilio/sendSms";
 import type { PaymentMethodInput } from "@/core/payments/types";
 
@@ -247,6 +247,33 @@ export async function POST(request: Request) {
         error: "Validation failed",
         code: introRead.code,
         details: [{ field: introRead.field, message: introRead.message }],
+      },
+      422,
+    );
+  }
+
+  if (introRead.kind === "ready" && isPreviewOnlyCustomerId(introRead.context.customerId)) {
+    pipeline.push("PAYLOAD FAILED");
+    emitSmsAttemptLog({
+      requestId,
+      outcome: "failed",
+      therapistId: auth.context.userId,
+      customerId: introRead.context.customerId,
+      stage: "payload_validation",
+      errorCode: "PREVIEW_CUSTOMER_ID_NOT_ALLOWED",
+      pipeline,
+    });
+    return jsonWithCors(
+      request,
+      {
+        error: "Validation failed",
+        code: "PREVIEW_CUSTOMER_ID_NOT_ALLOWED",
+        details: [
+          {
+            field: "customer.id",
+            message: "A real payup_intro send requires a real customer id. \"preview\" is allowed only on preview.",
+          },
+        ],
       },
       422,
     );
