@@ -1,5 +1,5 @@
 import { requireAuth } from "@/core/auth/requireAuth";
-import { disconnectGoogleCalendarForTherapist, GoogleCalendarError } from "@/core/google/calendar";
+import { disconnectGoogleCalendarForTherapist } from "@/core/google/calendar";
 import { emptyCorsResponse, jsonWithCors } from "@/core/http/cors";
 
 export async function POST(request: Request) {
@@ -7,15 +7,20 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
-    await disconnectGoogleCalendarForTherapist(auth.context.userId);
-    return jsonWithCors(request, { disconnected: true }, 200);
+    const result = await disconnectGoogleCalendarForTherapist(auth.context.userId);
+    return jsonWithCors(request, result, 200);
   } catch (error) {
-    if (error instanceof GoogleCalendarError) {
-      const status = error.code === "NOT_CONNECTED" ? 409 : 502;
-      return jsonWithCors(request, { error: error.message, code: error.code }, status);
-    }
     const message = error instanceof Error ? error.message : "Failed to disconnect Google Calendar";
-    return jsonWithCors(request, { error: message, code: "GOOGLE_DISCONNECT_FAILED" }, 502);
+    console.error("[PayUp API][google/disconnect] local cleanup failed:", message);
+    return jsonWithCors(
+      request,
+      {
+        disconnected: false,
+        error: "הניתוק לא הושלם. נסה שוב.",
+        code: "GOOGLE_DISCONNECT_FAILED",
+      },
+      502,
+    );
   }
 }
 

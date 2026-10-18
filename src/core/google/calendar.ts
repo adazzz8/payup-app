@@ -432,18 +432,55 @@ export async function selectGoogleCalendarForTherapist(
   return selected;
 }
 
-export async function disconnectGoogleCalendarForTherapist(therapistAccountId: string): Promise<void> {
-  const connection = await getGoogleCalendarConnection(therapistAccountId);
+export type GoogleRevocationOutcome = "revoked" | "failed" | "skipped";
+
+export type DisconnectGoogleCalendarResult = {
+  disconnected: true;
+  alreadyDisconnected: boolean;
+  googleRevocation: GoogleRevocationOutcome;
+  userMessage: string | null;
+};
+
+const LOCAL_DISCONNECT_GOOGLE_REVOKE_FAILED =
+  "היומן נותק ב-PayUp. ביטול הגישה ב-Google לא הושלם.";
+
+export async function disconnectGoogleCalendarForTherapist(
+  therapistAccountId: string,
+  deps: {
+    getConnection?: typeof getGoogleCalendarConnection;
+    revoke?: typeof revokeGoogleRefreshToken;
+    deleteConnection?: typeof deleteGoogleCalendarConnection;
+  } = {},
+): Promise<DisconnectGoogleCalendarResult> {
+  const getConnection = deps.getConnection ?? getGoogleCalendarConnection;
+  const revoke = deps.revoke ?? revokeGoogleRefreshToken;
+  const deleteConnection = deps.deleteConnection ?? deleteGoogleCalendarConnection;
+
+  const connection = await getConnection(therapistAccountId);
   if (!connection) {
-    throw new GoogleCalendarError("NOT_CONNECTED", "Not Connected");
+    return {
+      disconnected: true,
+      alreadyDisconnected: true,
+      googleRevocation: "skipped",
+      userMessage: null,
+    };
   }
+
+  let googleRevocation: GoogleRevocationOutcome = "revoked";
   try {
-    await revokeGoogleRefreshToken(connection.refreshToken);
+    await revoke(connection.refreshToken);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Google token revocation failed";
-    if (!isGoogleAuthRevokedError(message)) {
-      throw new GoogleCalendarError("GOOGLE_API_FAILED", message);
-    }
+    console.error("[PayUp API][google/disconnect] Google revocation failed:", message);
+    googleRevocation = "failed";
   }
-  await deleteGoogleCalendarConnection(therapistAccountId);
+
+  await deleteConnection(therapistAccountId);
+
+  return {
+    disconnected: true,
+    alreadyDisconnected: false,
+    googleRevocation,
+    userMessage: googleRevocation === "failed" ? LOCAL_DISCONNECT_GOOGLE_REVOKE_FAILED : null,
+  };
 }
